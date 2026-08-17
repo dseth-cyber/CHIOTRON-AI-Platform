@@ -34,15 +34,17 @@ func (c CheckerFunc) Check(ctx context.Context) error { return c.Probe(ctx) }
 
 // Deps is everything the router needs from the rest of the process.
 type Deps struct {
-	Config   config.Config
-	Log      *slog.Logger
-	Metrics  http.Handler
-	Checkers []Checker
-	Compute  *provider.Registry
-	Auth     Authenticator
-	Keys     KeyAdmin
-	Limiter  RateLimiter
-	Audit    AuditRecorder
+	Config        config.Config
+	Log           *slog.Logger
+	Metrics       http.Handler
+	Checkers      []Checker
+	Compute       *provider.Registry
+	Auth          Authenticator
+	Keys          KeyAdmin
+	Limiter       RateLimiter
+	Audit         AuditRecorder
+	Assistants    AssistantCatalogue
+	Conversations ConversationStore
 }
 
 // authenticated reports whether the authenticated routes can be served. They
@@ -137,6 +139,9 @@ func NewRouter(d Deps) http.Handler {
 	}
 
 	registerCompute(mux, d)
+	registerAssistants(mux, d)
+	registerConversations(mux, d)
+	registerChat(mux, d)
 	registerAdmin(mux, d)
 
 	// Ordering matters, outermost first:

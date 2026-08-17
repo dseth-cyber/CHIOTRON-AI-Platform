@@ -27,7 +27,7 @@ const streamGrace = 30 * time.Second
 // something has actually been produced, a failure can still be reported with a
 // meaningful HTTP status instead of an error buried inside a 200 stream.
 func (d Deps) streamChat(ctx context.Context, w http.ResponseWriter, r *http.Request,
-	caller auth.Identity, body chatRequestBody, route provider.Route) {
+	caller auth.Identity, plan chatPlan) {
 
 	controller := http.NewResponseController(w)
 	// The server's WriteTimeout is sized for ordinary requests and would cut a
@@ -51,6 +51,16 @@ func (d Deps) streamChat(ctx context.Context, w http.ResponseWriter, r *http.Req
 		w.Header().Set("X-Accel-Buffering", "no")
 		w.WriteHeader(http.StatusOK)
 		_ = controller.Flush()
+
+		// A stored conversation tells the client its id before any content, so a
+		// new conversation can be tracked even if the stream later fails.
+		if plan.stateful() {
+			_ = writeSSE(w, "", map[string]string{
+				"conversationId": plan.conversation.ID,
+				"assistant":      plan.assistant.Slug,
+			})
+			_ = controller.Flush()
+		}
 	}
 
 	emit := func(chunk provider.Chunk) error {
@@ -66,15 +76,11 @@ func (d Deps) streamChat(ctx context.Context, w http.ResponseWriter, r *http.Req
 		return controller.Flush()
 	}
 
-	response, resolved, err := d.Compute.ChatStream(ctx, body.Model, provider.ChatRequest{
-		Messages:    body.Messages,
-		Temperature: body.Temperature,
-		MaxTokens:   body.MaxTokens,
-	}, emit)
+	response, route, err := d.Compute.ChatStream(ctx, plan.logicalModel, plan.request, emit)
 	if err != nil {
 		d.Audit.RecordUsage(r.Context(), audit.Usage{
 			ActorID: caller.KeyID, APIKeyID: caller.KeyID, CompanyID: caller.CompanyID,
-			LogicalModel: route.Logical, Provider: route.Provider, Model: route.Model,
+			LogicalModel: orDefault(route.Logical, plan.logicalModel), Provider: route.Provider, Model: route.Model,
 			LatencyMs: time.Since(started).Milliseconds(), Outcome: audit.OutcomeFailure,
 		})
 
@@ -92,15 +98,7 @@ func (d Deps) streamChat(ctx context.Context, w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	d.Audit.RecordUsage(r.Context(), audit.Usage{
-		ActorID: caller.KeyID, APIKeyID: caller.KeyID, CompanyID: caller.CompanyID,
-		LogicalModel: resolved.Logical, Provider: resolved.Provider, Model: response.Model,
-		PromptTokens:     response.Usage.PromptTokens,
-		CompletionTokens: response.Usage.CompletionTokens,
-		TotalTokens:      response.Usage.TotalTokens,
-		LatencyMs:        response.LatencyMs,
-		Outcome:          audit.OutcomeSuccess,
-	})
+	d.recordCompletion(r.Context(), caller, plan, route, response)
 
 	// An empty completion still gets a well-formed stream.
 	sendHeaders()

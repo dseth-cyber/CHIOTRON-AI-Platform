@@ -2,14 +2,17 @@ package httpapi
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/chiotron/ai-control-plane/internal/assistant"
 	"github.com/chiotron/ai-control-plane/internal/audit"
 	"github.com/chiotron/ai-control-plane/internal/auth"
+	"github.com/chiotron/ai-control-plane/internal/conversation"
 	"github.com/chiotron/ai-control-plane/internal/ratelimit"
 )
 
@@ -85,6 +88,105 @@ func (f *fakeAudit) lastEvent(t *testing.T) audit.Event {
 	}
 	return f.events[len(f.events)-1]
 }
+
+type fakeAssistants struct {
+	records []assistant.Assistant
+	err     error
+	created assistant.CreateParams
+	// company records which company predicate the catalogue was asked for.
+	company string
+}
+
+func (f *fakeAssistants) List(_ context.Context, companyID string) ([]assistant.Assistant, error) {
+	f.company = companyID
+	return f.records, f.err
+}
+
+func (f *fakeAssistants) Resolve(_ context.Context, reference, companyID string) (assistant.Assistant, error) {
+	f.company = companyID
+	if f.err != nil {
+		return assistant.Assistant{}, f.err
+	}
+	for _, record := range f.records {
+		if record.Slug == reference || record.ID == reference {
+			return record, nil
+		}
+	}
+	return assistant.Assistant{}, fmt.Errorf("%w: %q", assistant.ErrNotFound, reference)
+}
+
+func (f *fakeAssistants) Create(_ context.Context, params assistant.CreateParams) (assistant.Assistant, error) {
+	f.created = params
+	if f.err != nil {
+		return assistant.Assistant{}, f.err
+	}
+	return assistant.Assistant{ID: "aaaa", Slug: params.Slug, Name: params.Name, LogicalModel: params.LogicalModel, CompanyID: params.CompanyID}, nil
+}
+
+type fakeConversations struct {
+	record    conversation.Conversation
+	history   []conversation.Message
+	turns     []conversation.Turn
+	created   int
+	deleted   string
+	getErr    error
+	appendErr error
+	persist   bool
+	// actors records which owner each read was scoped to.
+	actors []string
+}
+
+func (f *fakeConversations) Create(_ context.Context, _ conversation.Owner, assistantID string) (conversation.Conversation, error) {
+	f.created++
+	f.record.AssistantID = assistantID
+	if f.record.ID == "" {
+		f.record.ID = "cccccccc-cccc-cccc-cccc-cccccccccccc"
+	}
+	return f.record, nil
+}
+
+func (f *fakeConversations) List(_ context.Context, actorID string, _ int) ([]conversation.Conversation, error) {
+	f.actors = append(f.actors, actorID)
+	if f.record.ID == "" {
+		return nil, nil
+	}
+	return []conversation.Conversation{f.record}, nil
+}
+
+func (f *fakeConversations) Get(_ context.Context, _, actorID string) (conversation.Conversation, error) {
+	f.actors = append(f.actors, actorID)
+	if f.getErr != nil {
+		return conversation.Conversation{}, f.getErr
+	}
+	return f.record, nil
+}
+
+func (f *fakeConversations) Messages(_ context.Context, _, actorID string) ([]conversation.Message, error) {
+	f.actors = append(f.actors, actorID)
+	if f.getErr != nil {
+		return nil, f.getErr
+	}
+	return f.history, nil
+}
+
+func (f *fakeConversations) AppendTurn(_ context.Context, _, _ string, turn conversation.Turn) error {
+	if f.appendErr != nil {
+		return f.appendErr
+	}
+	f.turns = append(f.turns, turn)
+	return nil
+}
+
+func (f *fakeConversations) Delete(_ context.Context, id, actorID string) error {
+	f.actors = append(f.actors, actorID)
+	if f.getErr != nil {
+		return f.getErr
+	}
+	f.deleted = id
+	return nil
+}
+
+func (f *fakeConversations) PersistsContent() bool { return f.persist }
 
 func fullyScopedIdentity() auth.Identity {
 	return auth.Identity{

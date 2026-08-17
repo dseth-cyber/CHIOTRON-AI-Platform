@@ -35,7 +35,11 @@ Ollama and model credentials are deliberately never exposed to browsers.
 | `GET /api/v1/compute/health` | Per-provider compute-plane status and loaded models. Needs `models:read`. |
 | `GET /api/v1/models` | Logical models, the route behind each one, and whether the upstream model is loaded. Needs `models:read`. |
 | `POST /api/v1/chat/completions` | Non-streaming completion. Needs `chat:completions`. |
+| `GET /api/v1/assistants` | Assistant catalogue, filtered by the caller's company. Needs `assistants:read`. |
+| `GET /api/v1/conversations` | The caller's own conversations. Needs `chat:completions`. |
+| `GET/DELETE /api/v1/conversations/{id}` | One transcript, or soft-delete it. Needs `chat:completions`. |
 | `GET/POST /api/v1/admin/api-keys` | List and mint API keys. Needs `admin:keys`. |
+| `POST /api/v1/admin/assistants` | Create an assistant. Needs `admin:assistants`. |
 | `POST /api/v1/admin/api-keys/{id}/revoke` | Revoke a key. Needs `admin:keys`. |
 | `GET /api/v1/admin/outbox` | Unpublished usage and audit backlog. Needs `admin:keys`. |
 
@@ -53,7 +57,7 @@ Minting the first key over HTTP is impossible — no key holds `admin:keys` yet 
 docker compose run --rm --no-deps api apikey create -name bootstrap -scopes models:read,chat:completions,admin:keys
 ```
 
-Then call the API with `Authorization: Bearer <key>`. Scopes are `models:read`, `chat:completions` and `admin:keys`; an unknown scope is rejected when the key is created, not silently ignored.
+Then call the API with `Authorization: Bearer <key>`. Scopes are `models:read`, `assistants:read`, `chat:completions`, `admin:keys` and `admin:assistants`; an unknown scope is rejected when the key is created, not silently ignored. Reading and deleting your own conversations falls under `chat:completions` rather than a scope of its own — a transcript is part of using chat, and it is never visible to another credential.
 
 `X-Active-Company` is honoured only after the credential is validated and only when it matches what the key is entitled to; anything else is a `403`.
 
@@ -83,6 +87,21 @@ DEFAULT_MODEL=default
 The provider and model are split on the first slash, so upstream names may contain colons. A route naming an unregistered provider, a duplicate logical id, or a `DEFAULT_MODEL` with no route stops the process at startup instead of failing on a user's first request.
 
 **Failure isolation is deliberate.** The compute plane is not part of `/readyz`: losing VM5 degrades model calls only and the Control Plane stays ready (ARCHITECTURE-v1 section 9). With Ollama unreachable, `/readyz` still returns `200`, `/api/v1/compute/health` reports `unavailable` with the underlying reason, `/api/v1/models` marks routes unavailable, and a chat call returns `503` — never a Control Plane `500`.
+
+## Assistants and conversations
+
+An assistant names the instructions and the **logical model** to use, so the portal selects an assistant and provider details stay hidden from the user (ARCHITECTURE-v1 section 10). Migration `0003` seeds a `general` assistant on the default route; more are created through `POST /api/v1/admin/assistants`. The catalogue is filtered by the caller's company in SQL, and instructions are never returned by it — they are policy the operator wrote, not something every caller needs to read back.
+
+`POST /api/v1/chat/completions` accepts either form, never both:
+
+| Form | Body | Behaviour |
+|---|---|---|
+| Stateless | `messages` | The caller holds the transcript. Nothing is stored. |
+| Stored | `message` plus `assistant` or `conversationId` | The platform holds the transcript, prepends the assistant's instructions and replays recent turns. |
+
+A conversation is bound to the assistant it started with, so a later request cannot quietly switch its behaviour. Every read is scoped to the credential that created it: another key's id reads as `404`, not `403`, so an id cannot be probed for existence. Deletion is soft, keeping audit references intact.
+
+`PERSIST_PROMPTS=false` turns off prompt logging: turns are still recorded so history keeps its titles and counters, but message text is not stored and redacted turns are skipped when replaying context. `HISTORY_TURN_LIMIT` caps how much of a transcript is sent to the model — a transcript grows without limit, a context window does not.
 
 ### Streaming
 

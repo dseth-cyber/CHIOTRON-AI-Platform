@@ -33,6 +33,12 @@ type Config struct {
 	// creating call does not name one. Per-key limits live on the key record.
 	DefaultRateLimitPerMinute int
 
+	// Conversation retention and prompt logging are policy settings
+	// (ARCHITECTURE-v1 section 5). With PersistPrompts off, a turn is still
+	// recorded so history keeps its shape, without the message text.
+	PersistPrompts   bool
+	HistoryTurnLimit int
+
 	// Telemetry. VM4 emits OpenTelemetry to the existing Tempo/Loki stack and
 	// is scraped by the existing Prometheus (ARCHITECTURE-v1 section 9); the
 	// platform does not run a monitoring stack of its own.
@@ -118,6 +124,14 @@ func Load(getenv func(string) string, version string) (Config, error) {
 		fail("%v", err)
 	} else if cfg.DefaultRateLimitPerMinute <= 0 {
 		fail("DEFAULT_RATE_LIMIT_PER_MINUTE must be greater than zero, got %d", cfg.DefaultRateLimitPerMinute)
+	}
+	if cfg.PersistPrompts, err = boolVar(getenv, "PERSIST_PROMPTS", true); err != nil {
+		fail("%v", err)
+	}
+	if cfg.HistoryTurnLimit, err = intVar(getenv, "HISTORY_TURN_LIMIT", 20); err != nil {
+		fail("%v", err)
+	} else if cfg.HistoryTurnLimit <= 0 {
+		fail("HISTORY_TURN_LIMIT must be greater than zero, got %d", cfg.HistoryTurnLimit)
 	}
 
 	if len(problems) > 0 {
@@ -227,6 +241,8 @@ func (c Config) Redacted() []any {
 		"modelRoutes", c.ModelRoutes,
 		"defaultModel", c.DefaultModel,
 		"defaultRateLimitPerMinute", c.DefaultRateLimitPerMinute,
+		"persistPrompts", c.PersistPrompts,
+		"historyTurnLimit", c.HistoryTurnLimit,
 		"redisAddr", c.RedisAddr,
 		"redisDB", c.RedisDB,
 		"allowedOrigins", c.AllowedOrigins,

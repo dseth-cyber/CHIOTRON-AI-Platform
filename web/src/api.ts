@@ -52,6 +52,52 @@ export type ComputeHealth = {
 
 export type TokenUsage = { promptTokens: number; completionTokens: number; totalTokens: number };
 
+/** Instructions are assistant policy; the catalogue never returns them. */
+export type Assistant = {
+  id: string;
+  slug: string;
+  name: string;
+  description: string;
+  logicalModel: string;
+  temperature?: number;
+  maxTokens?: number;
+  companyId?: string;
+  enabled: boolean;
+};
+
+export type ConversationSummary = {
+  id: string;
+  title: string;
+  assistantId?: string;
+  assistantSlug?: string;
+  assistantName?: string;
+  messageCount: number;
+  totalTokens: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type StoredMessage = {
+  role: 'user' | 'assistant';
+  content: string;
+  redacted?: boolean;
+  promptTokens?: number;
+  completionTokens?: number;
+  model?: string;
+  createdAt: string;
+};
+
+export type ConversationList = {
+  conversations: ConversationSummary[];
+  promptsPersisted: boolean;
+};
+
+export type ConversationDetail = {
+  conversation: ConversationSummary;
+  messages: StoredMessage[];
+  promptsPersisted: boolean;
+};
+
 export type Completion = {
   logicalModel: string;
   provider: string;
@@ -115,12 +161,34 @@ export const fetchIdentity = (signal?: AbortSignal) => get<Identity>('/api/v1/me
 export const fetchModels = (signal?: AbortSignal) => get<ModelCatalogue>('/api/v1/models', signal);
 export const fetchComputeHealth = (signal?: AbortSignal) =>
   get<ComputeHealth>('/api/v1/compute/health', signal);
+export const fetchAssistants = (signal?: AbortSignal) =>
+  get<{ assistants: Assistant[] }>('/api/v1/assistants', signal);
+export const fetchConversations = (signal?: AbortSignal) =>
+  get<ConversationList>('/api/v1/conversations', signal);
+export const fetchConversation = (id: string, signal?: AbortSignal) =>
+  get<ConversationDetail>(`/api/v1/conversations/${encodeURIComponent(id)}`, signal);
+
+export async function deleteConversation(id: string): Promise<void> {
+  const response = await fetch(`${BASE}/api/v1/conversations/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    headers: headers(),
+  });
+  if (!response.ok) throw await failure(response);
+}
 
 export type ChatMessage = { role: 'system' | 'user' | 'assistant'; content: string };
 
+/**
+ * Either form is accepted, never both: `messages` for a stateless call where the
+ * caller holds the transcript, or `message` with an assistant or conversation
+ * for one the platform stores.
+ */
 export type ChatRequest = {
   model?: string;
-  messages: ChatMessage[];
+  messages?: ChatMessage[];
+  assistant?: string;
+  conversationId?: string;
+  message?: string;
   temperature?: number;
   maxTokens?: number;
 };
@@ -128,6 +196,11 @@ export type ChatRequest = {
 export type StreamHandlers = {
   onContent: (delta: string) => void;
   onDone: (finishReason: string, usage: TokenUsage | undefined) => void;
+  /**
+   * Reports the stored conversation before any content, so a newly created one
+   * can be tracked even if the stream later fails.
+   */
+  onConversation?: (id: string, assistant: string) => void;
 };
 
 type StreamFrame = {
@@ -135,6 +208,8 @@ type StreamFrame = {
   done?: boolean;
   finishReason?: string;
   usage?: TokenUsage;
+  conversationId?: string;
+  assistant?: string;
 };
 
 /**
@@ -176,6 +251,7 @@ export async function streamChat(
     if (event === 'error') throw new ApiError(502, 'the stream was interrupted');
 
     const chunk = JSON.parse(payload) as StreamFrame;
+    if (chunk.conversationId) handlers.onConversation?.(chunk.conversationId, chunk.assistant ?? '');
     if (chunk.content) handlers.onContent(chunk.content);
     if (chunk.done) handlers.onDone(chunk.finishReason ?? '', chunk.usage);
   };

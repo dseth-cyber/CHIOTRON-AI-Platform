@@ -28,6 +28,8 @@ func testConfig() config.Config {
 		ReadinessTimeout:     time.Second,
 		ComputeTimeout:       time.Second,
 		ComputeHealthTimeout: time.Second,
+		PersistPrompts:       true,
+		HistoryTurnLimit:     20,
 	}
 }
 

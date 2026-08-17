@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import './styles.css';
 import { Modal } from './Modal';
 import { ChatWorkspace } from './Chat';
-import { ConnectDialog, ConnectionBadge, SCOPE_CHAT } from './Connection';
+import { ConnectDialog, ConnectionBadge, SCOPE_ASSISTANTS_READ, SCOPE_CHAT } from './Connection';
 import { useComputeHealth, useCredential, useModels, usePlatform, useScopes } from './hooks';
 
 type PhaseStatus = 'complete' | 'active' | 'planned';
@@ -15,7 +15,7 @@ type Overview = { total: number; done: number; progress: number; active: number 
 const initialPhases: Phase[] = [
   { id: 1, title: 'Foundation', detail: 'Contracts, service boundaries, migrations and platform configuration', progress: 80, done: 4, total: 5, status: 'active', sprints: ['Architecture v1 and service boundaries recorded', 'Development compose and AI database foundation available', 'Service-owned migrations and configuration', 'OpenTelemetry baseline and CI checks', 'Identity/JWT contract integration'] },
   { id: 2, title: 'AI Gateway', detail: 'JWT/API key enforcement, quota, streaming, usage and audit outbox', progress: 80, done: 4, total: 5, status: 'active', sprints: ['Health and platform discovery endpoint available', 'API keys, scopes and rotation', 'Usage metadata and audit outbox', 'Rate limits, quota and SSE streaming', 'JWT validation and active-company guard'] },
-  { id: 3, title: 'User Portal', detail: 'Assistant-first workspace, history, permissions and multilingual UI', progress: 67, done: 4, total: 6, status: 'active', sprints: ['Application shell and Developer Portal delivered', 'Roadmap tracking UI delivered', 'Gateway-connected portal and chat workspace', 'Permission-aware navigation', 'Assistant catalogue and conversation history', 'Thai, English, Chinese, Burmese and Japanese i18n'] },
+  { id: 3, title: 'User Portal', detail: 'Assistant-first workspace, history, permissions and multilingual UI', progress: 83, done: 5, total: 6, status: 'active', sprints: ['Application shell and Developer Portal delivered', 'Roadmap tracking UI delivered', 'Gateway-connected portal and chat workspace', 'Permission-aware navigation', 'Assistant catalogue and conversation history', 'Thai, English, Chinese, Burmese and Japanese i18n'] },
   { id: 4, title: 'Local LLM', detail: 'Provider routing, compute health and isolated local inference', progress: 100, done: 5, total: 5, status: 'complete', sprints: ['Ollama Compute Plane running', 'NVIDIA GPU passthrough verified', 'Qwen smoke-test model loaded', 'Provider-neutral Ollama adapter', 'Compute registry and model router'] },
   { id: 5, title: 'Knowledge Platform', detail: 'Document ACL, ingestion, embedding pipeline and hybrid search', progress: 0, done: 0, total: 6, status: 'planned', sprints: ['StorageProvider and source configuration', 'Document connector and upload contract', 'ACL metadata and classification policy', 'Parser, chunking and provenance', 'Embedding worker and pgvector storage', 'Permission-filtered hybrid retrieval'] },
   { id: 6, title: 'Agentic RAG', detail: 'Planner, controlled tools, citations and retrieval policies', progress: 0, done: 0, total: 5, status: 'planned', sprints: ['Intent and planner policy', 'Controlled tool registry', 'Agent authorization and rate limits', 'Multi-step retrieval and conflict handling', 'Citation and evaluation suite'] },
@@ -44,7 +44,9 @@ function App() {
   const [showConnect, setShowConnect] = useState(false);
   const [showUpdate, setShowUpdate] = useState<number | null>(null);
   const { has } = useScopes();
-  const canChat = has(SCOPE_CHAT);
+  // The workspace picks an assistant before it can send anything, so it needs
+  // both scopes to be usable at all.
+  const canChat = has(SCOPE_CHAT) && has(SCOPE_ASSISTANTS_READ);
 
   const overview = useMemo<Overview>(() => {
     const total = phases.reduce((sum, phase) => sum + phase.total, 0);
@@ -72,7 +74,7 @@ function App() {
             className={view === 'chat' ? 'nav-item active' : canChat ? 'nav-item' : 'nav-item muted'}
             onClick={() => canChat && setView('chat')}
             disabled={!canChat}
-            title={canChat ? undefined : 'Needs a key with the chat:completions scope'}
+            title={canChat ? undefined : 'Needs a key with the chat:completions and assistants:read scopes'}
           ><span>CH</span>Chat</button>
           <button className="nav-item muted" disabled><span>KN</span>Knowledge</button>
         </nav>

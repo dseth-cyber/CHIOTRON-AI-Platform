@@ -33,12 +33,20 @@ const (
 // filtering is convenience only (ARCHITECTURE-v1 section 5).
 const (
 	ScopeModelsRead     = "models:read"
-	ScopeChatCompletion = "chat:completions"
-	ScopeAdminKeys      = "admin:keys"
+	ScopeAssistantsRead = "assistants:read"
+	// ScopeChatCompletion also covers reading and deleting the caller's own
+	// conversations: a transcript is part of using chat, not a separate
+	// capability, and it is only ever visible to the credential that created it.
+	ScopeChatCompletion  = "chat:completions"
+	ScopeAdminKeys       = "admin:keys"
+	ScopeAdminAssistants = "admin:assistants"
 )
 
 // KnownScopes lists every scope the Control Plane understands today.
-var KnownScopes = []string{ScopeModelsRead, ScopeChatCompletion, ScopeAdminKeys}
+var KnownScopes = []string{
+	ScopeModelsRead, ScopeAssistantsRead, ScopeChatCompletion,
+	ScopeAdminKeys, ScopeAdminAssistants,
+}
 
 var (
 	ErrMalformedKey = errors.New("malformed api key")

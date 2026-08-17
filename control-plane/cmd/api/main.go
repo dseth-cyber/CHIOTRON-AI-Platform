@@ -24,9 +24,11 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/chiotron/ai-control-plane/internal/assistant"
 	"github.com/chiotron/ai-control-plane/internal/audit"
 	"github.com/chiotron/ai-control-plane/internal/auth"
 	"github.com/chiotron/ai-control-plane/internal/config"
+	"github.com/chiotron/ai-control-plane/internal/conversation"
 	"github.com/chiotron/ai-control-plane/internal/httpapi"
 	"github.com/chiotron/ai-control-plane/internal/migrate"
 	"github.com/chiotron/ai-control-plane/internal/migrations"
@@ -105,14 +107,16 @@ func run() error {
 
 	keys := auth.NewStore(pool)
 	handler := httpapi.NewRouter(httpapi.Deps{
-		Config:  cfg,
-		Log:     log,
-		Metrics: tel.MetricsHandler,
-		Compute: compute,
-		Auth:    keys,
-		Keys:    keys,
-		Limiter: ratelimit.New(redisClient),
-		Audit:   audit.NewRecorder(pool, log),
+		Config:        cfg,
+		Log:           log,
+		Metrics:       tel.MetricsHandler,
+		Compute:       compute,
+		Auth:          keys,
+		Keys:          keys,
+		Limiter:       ratelimit.New(redisClient),
+		Audit:         audit.NewRecorder(pool, log),
+		Assistants:    assistant.NewStore(pool),
+		Conversations: conversation.NewStore(pool, cfg.PersistPrompts),
 		Checkers: []httpapi.Checker{
 			httpapi.CheckerFunc{DependencyName: "postgres", Probe: pool.Ping},
 			httpapi.CheckerFunc{DependencyName: "redis", Probe: func(ctx context.Context) error {

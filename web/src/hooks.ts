@@ -2,13 +2,19 @@ import { useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-q
 import { useCallback, useSyncExternalStore } from 'react';
 import {
   ApiError,
+  fetchAssistants,
   fetchComputeHealth,
+  fetchConversation,
+  fetchConversations,
   fetchIdentity,
   fetchModels,
   fetchPlatform,
   readCredential,
   writeCredential,
+  type Assistant,
   type ComputeHealth,
+  type ConversationDetail,
+  type ConversationList,
   type Identity,
   type ModelCatalogue,
   type Platform,
@@ -92,6 +98,44 @@ export function useComputeHealth(enabled: boolean): UseQueryResult<ComputeHealth
     refetchInterval: 30_000,
     retry: retryUnlessClientError,
   });
+}
+
+export function useAssistants(enabled: boolean): UseQueryResult<Assistant[], Error> {
+  const [credential] = useCredential();
+  return useQuery<Assistant[], Error>({
+    queryKey: ['assistants', credential],
+    queryFn: async ({ signal }) => (await fetchAssistants(signal)).assistants ?? [],
+    enabled: enabled && credential !== '',
+    retry: retryUnlessClientError,
+  });
+}
+
+export function useConversations(enabled: boolean): UseQueryResult<ConversationList, Error> {
+  const [credential] = useCredential();
+  return useQuery<ConversationList, Error>({
+    queryKey: ['conversations', credential],
+    queryFn: ({ signal }) => fetchConversations(signal),
+    enabled: enabled && credential !== '',
+    retry: retryUnlessClientError,
+  });
+}
+
+export function useConversation(id: string | null): UseQueryResult<ConversationDetail, Error> {
+  const [credential] = useCredential();
+  return useQuery<ConversationDetail, Error>({
+    queryKey: ['conversation', credential, id],
+    queryFn: ({ signal }) => fetchConversation(id as string, signal),
+    enabled: credential !== '' && id !== null,
+    retry: retryUnlessClientError,
+  });
+}
+
+/** Refreshes the history list after a turn changes a title or its counters. */
+export function useRefreshHistory(): () => void {
+  const queryClient = useQueryClient();
+  return useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: ['conversations'] });
+  }, [queryClient]);
 }
 
 /**

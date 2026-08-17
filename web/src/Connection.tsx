@@ -4,13 +4,17 @@ import { Modal } from './Modal';
 import { useCredential, useIdentity } from './hooks';
 
 export const SCOPE_MODELS_READ = 'models:read';
+export const SCOPE_ASSISTANTS_READ = 'assistants:read';
 export const SCOPE_CHAT = 'chat:completions';
 export const SCOPE_ADMIN_KEYS = 'admin:keys';
+export const SCOPE_ADMIN_ASSISTANTS = 'admin:assistants';
 
 const SCOPE_LABELS: Record<string, string> = {
   [SCOPE_MODELS_READ]: 'Read the model catalogue',
-  [SCOPE_CHAT]: 'Run completions',
+  [SCOPE_ASSISTANTS_READ]: 'Read the assistant catalogue',
+  [SCOPE_CHAT]: 'Run completions and read own history',
   [SCOPE_ADMIN_KEYS]: 'Manage API keys',
+  [SCOPE_ADMIN_ASSISTANTS]: 'Manage assistants',
 };
 
 /** Sidebar status line: is this browser talking to the Control Plane, and as whom. */

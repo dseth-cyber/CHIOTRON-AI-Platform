@@ -1,18 +1,12 @@
 package httpapi
 
 import (
-	"encoding/json"
 	"net/http"
 	"time"
 
-	"github.com/chiotron/ai-control-plane/internal/audit"
 	"github.com/chiotron/ai-control-plane/internal/auth"
 	"github.com/chiotron/ai-control-plane/internal/provider"
 )
-
-// maxChatBody bounds an inbound prompt. Per-key rate limiting caps how often a
-// caller may send one; this caps how large each one may be.
-const maxChatBody = 1 << 20
 
 type providerHealth struct {
 	Status    string           `json:"status"`
@@ -27,14 +21,6 @@ type logicalModel struct {
 	Model     string `json:"model"`
 	Available bool   `json:"available"`
 	Default   bool   `json:"default,omitempty"`
-}
-
-type chatRequestBody struct {
-	Model       string             `json:"model"`
-	Messages    []provider.Message `json:"messages"`
-	Temperature *float64           `json:"temperature,omitempty"`
-	MaxTokens   *int               `json:"maxTokens,omitempty"`
-	Stream      bool               `json:"stream,omitempty"`
 }
 
 // registerCompute adds the compute-plane routes.
@@ -120,81 +106,4 @@ func registerCompute(mux *http.ServeMux, d Deps) {
 			"models":  models,
 		})
 	}))
-
-	mux.HandleFunc("POST /api/v1/chat/completions", d.guard(auth.ScopeChatCompletion, func(w http.ResponseWriter, r *http.Request) {
-		caller, _ := auth.IdentityFrom(r.Context())
-
-		var body chatRequestBody
-		decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxChatBody))
-		decoder.DisallowUnknownFields()
-		if err := decoder.Decode(&body); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
-			return
-		}
-		if len(body.Messages) == 0 {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "messages must not be empty"})
-			return
-		}
-
-		// Resolve before doing any work so an unknown model is a clean 404 in
-		// both modes, rather than an error frame inside an established stream.
-		if _, _, err := d.Compute.Resolve(body.Model); err != nil {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
-			return
-		}
-
-		ctx, cancel := contextWithTimeout(r, cfg.ComputeTimeout)
-		defer cancel()
-
-		if body.Stream {
-			_, route, _ := d.Compute.Resolve(body.Model)
-			d.streamChat(ctx, w, r, caller, body, route)
-			return
-		}
-
-		started := time.Now()
-		response, route, err := d.Compute.Chat(ctx, body.Model, provider.ChatRequest{
-			Messages:    body.Messages,
-			Temperature: body.Temperature,
-			MaxTokens:   body.MaxTokens,
-		})
-		if err != nil {
-			// A failed call still consumed capacity and still belongs in the
-			// usage record; only its token counts are zero.
-			d.Audit.RecordUsage(r.Context(), audit.Usage{
-				ActorID: caller.KeyID, APIKeyID: caller.KeyID, CompanyID: caller.CompanyID,
-				LogicalModel: orDefault(route.Logical, body.Model), Provider: route.Provider, Model: route.Model,
-				LatencyMs: time.Since(started).Milliseconds(), Outcome: audit.OutcomeFailure,
-			})
-			d.writeChatError(w, err, route)
-			return
-		}
-
-		d.Audit.RecordUsage(r.Context(), audit.Usage{
-			ActorID: caller.KeyID, APIKeyID: caller.KeyID, CompanyID: caller.CompanyID,
-			LogicalModel: route.Logical, Provider: route.Provider, Model: response.Model,
-			PromptTokens:     response.Usage.PromptTokens,
-			CompletionTokens: response.Usage.CompletionTokens,
-			TotalTokens:      response.Usage.TotalTokens,
-			LatencyMs:        response.LatencyMs,
-			Outcome:          audit.OutcomeSuccess,
-		})
-
-		writeJSON(w, http.StatusOK, map[string]any{
-			"logicalModel": route.Logical,
-			"provider":     route.Provider,
-			"model":        response.Model,
-			"content":      response.Content,
-			"finishReason": response.FinishReason,
-			"usage":        response.Usage,
-			"latencyMs":    response.LatencyMs,
-		})
-	}))
-}
-
-func orDefault(value, fallback string) string {
-	if value == "" {
-		return fallback
-	}
-	return value
 }
