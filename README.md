@@ -31,9 +31,42 @@ Ollama and model credentials are deliberately never exposed to browsers.
 | `GET /readyz` | Readiness. Probes PostgreSQL and Redis and returns `503` with per-dependency detail when one is unavailable. |
 | `GET /metrics` | Prometheus scrape endpoint. |
 | `GET /api/v1/platform` | Platform discovery. |
-| `GET /api/v1/compute/health` | Per-provider compute-plane status and loaded models. |
-| `GET /api/v1/models` | Logical models, the route behind each one, and whether the upstream model is loaded. |
-| `POST /api/v1/chat/completions` | Development only, see below. |
+| `GET /api/v1/compute/health` | Per-provider compute-plane status and loaded models. Needs `models:read`. |
+| `GET /api/v1/models` | Logical models, the route behind each one, and whether the upstream model is loaded. Needs `models:read`. |
+| `POST /api/v1/chat/completions` | Non-streaming completion. Needs `chat:completions`. |
+| `GET/POST /api/v1/admin/api-keys` | List and mint API keys. Needs `admin:keys`. |
+| `POST /api/v1/admin/api-keys/{id}/revoke` | Revoke a key. Needs `admin:keys`. |
+| `GET /api/v1/admin/outbox` | Unpublished usage and audit backlog. Needs `admin:keys`. |
+
+Liveness, readiness, metrics and platform discovery are unauthenticated: probes and scrapes carry no credential. Everything else requires a key.
+
+## Authentication
+
+API keys are platform-owned credentials — hashed, scoped, rate-limited, expirable and auditable, with the raw value shown once only (ARCHITECTURE-v1 section 5). They are separate from the JWTs the existing Identity Service issues, which arrive with the identity integration.
+
+A key looks like `ceap_<hex prefix>_<base64url secret>`. Only the prefix and a SHA-256 of the secret are stored. The secret is 256 bits of randomness rather than a user-chosen password, so a password-hardening KDF would add per-request latency without adding meaningful resistance.
+
+Minting the first key over HTTP is impossible — no key holds `admin:keys` yet — so it is done through the binary rather than through a master credential in the environment:
+
+```powershell
+docker compose run --rm --no-deps api apikey create -name bootstrap -scopes models:read,chat:completions,admin:keys
+```
+
+Then call the API with `Authorization: Bearer <key>`. Scopes are `models:read`, `chat:completions` and `admin:keys`; an unknown scope is rejected when the key is created, not silently ignored.
+
+`X-Active-Company` is honoured only after the credential is validated and only when it matches what the key is entitled to; anything else is a `403`.
+
+### Rate limits
+
+Each key carries its own requests-per-minute quota (`DEFAULT_RATE_LIMIT_PER_MINUTE` when the creating call does not name one). Counters live in Redis under `ai:rate-limit:`. Every response carries `X-RateLimit-Limit`, `X-RateLimit-Remaining` and `X-RateLimit-Reset`; a throttled one adds `Retry-After`.
+
+The limiter **fails closed**: if Redis is unreachable the request gets a `503` rather than bypassing the quota. Redis is already a declared readiness dependency, so an outage should shed load rather than silently remove the ceiling that protects the compute plane.
+
+### Usage and audit outbox
+
+Every model call writes a `usage_events` row and every denied or administrative action writes an `audit_logs` row, both with `published_at` NULL. These drain to `ai.usage.v1` and `ai.audit.v1` once Kafka is deployed (ARCHITECTURE-v1 section 7); until then the tables are the durable record and nothing is lost by the broker being absent. `GET /api/v1/admin/outbox` reports the backlog.
+
+Writing an audit row never fails the request that produced it — losing the action is worse than losing its audit line, and the failure is still logged at error level.
 
 ## Compute plane
 
@@ -50,11 +83,7 @@ The provider and model are split on the first slash, so upstream names may conta
 
 **Failure isolation is deliberate.** The compute plane is not part of `/readyz`: losing VM5 degrades model calls only and the Control Plane stays ready (ARCHITECTURE-v1 section 9). With Ollama unreachable, `/readyz` still returns `200`, `/api/v1/compute/health` reports `unavailable` with the underlying reason, `/api/v1/models` marks routes unavailable, and a chat call returns `503` — never a Control Plane `500`.
 
-`POST /api/v1/chat/completions` exists only to exercise the adapter before the Gateway's JWT middleware lands. It is **absent unless `DEV_UNAUTHENTICATED_CHAT=true`**, and logs a warning at startup when enabled. Streaming is deliberately not implemented here: SSE ships with the Gateway, together with authentication and quota.
-
-```powershell
-$env:DEV_UNAUTHENTICATED_CHAT = "true"; docker compose up -d api
-```
+Streaming is not implemented yet: `POST /api/v1/chat/completions` returns a complete response. SSE is the remaining piece of the Gateway phase.
 
 ## Configuration and schema
 

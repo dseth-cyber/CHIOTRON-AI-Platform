@@ -6,11 +6,13 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/chiotron/ai-control-plane/internal/audit"
+	"github.com/chiotron/ai-control-plane/internal/auth"
 	"github.com/chiotron/ai-control-plane/internal/provider"
 )
 
-// maxChatBody bounds an inbound prompt. The Gateway phase replaces this with
-// per-identity quota; until then it is the only backstop.
+// maxChatBody bounds an inbound prompt. Per-key rate limiting caps how often a
+// caller may send one; this caps how large each one may be.
 const maxChatBody = 1 << 20
 
 type providerHealth struct {
@@ -41,12 +43,12 @@ type chatRequestBody struct {
 // Control Plane stays ready and reports the provider as unavailable
 // (ARCHITECTURE-v1 section 9).
 func registerCompute(mux *http.ServeMux, d Deps) {
-	if d.Compute == nil {
+	if d.Compute == nil || !d.authenticated() {
 		return
 	}
 	cfg := d.Config
 
-	mux.HandleFunc("GET /api/v1/compute/health", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /api/v1/compute/health", d.guard(auth.ScopeModelsRead, func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := contextWithTimeout(r, cfg.ComputeHealthTimeout)
 		defer cancel()
 
@@ -84,9 +86,9 @@ func registerCompute(mux *http.ServeMux, d Deps) {
 			"providers": providers,
 			"time":      time.Now().UTC().Format(time.RFC3339),
 		})
-	})
+	}))
 
-	mux.HandleFunc("GET /api/v1/models", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /api/v1/models", d.guard(auth.ScopeModelsRead, func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := contextWithTimeout(r, cfg.ComputeHealthTimeout)
 		defer cancel()
 
@@ -117,12 +119,11 @@ func registerCompute(mux *http.ServeMux, d Deps) {
 			"default": d.Compute.DefaultModel(),
 			"models":  models,
 		})
-	})
+	}))
 
-	if !cfg.DevUnauthenticatedChat {
-		return
-	}
-	mux.HandleFunc("POST /api/v1/chat/completions", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /api/v1/chat/completions", d.guard(auth.ScopeChatCompletion, func(w http.ResponseWriter, r *http.Request) {
+		caller, _ := auth.IdentityFrom(r.Context())
+
 		var body chatRequestBody
 		decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxChatBody))
 		decoder.DisallowUnknownFields()
@@ -138,11 +139,22 @@ func registerCompute(mux *http.ServeMux, d Deps) {
 		ctx, cancel := contextWithTimeout(r, cfg.ComputeTimeout)
 		defer cancel()
 
+		started := time.Now()
 		response, route, err := d.Compute.Chat(ctx, body.Model, provider.ChatRequest{
 			Messages:    body.Messages,
 			Temperature: body.Temperature,
 			MaxTokens:   body.MaxTokens,
 		})
+		if err != nil {
+			// A failed call still consumed capacity and still belongs in the
+			// usage record; only its token counts are zero.
+			d.Audit.RecordUsage(r.Context(), audit.Usage{
+				ActorID: caller.KeyID, APIKeyID: caller.KeyID, CompanyID: caller.CompanyID,
+				LogicalModel: orDefault(route.Logical, body.Model), Provider: route.Provider, Model: route.Model,
+				LatencyMs: time.Since(started).Milliseconds(), Outcome: audit.OutcomeFailure,
+			})
+		}
+
 		switch {
 		case errors.Is(err, provider.ErrUnknownModel):
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
@@ -158,6 +170,16 @@ func registerCompute(mux *http.ServeMux, d Deps) {
 			return
 		}
 
+		d.Audit.RecordUsage(r.Context(), audit.Usage{
+			ActorID: caller.KeyID, APIKeyID: caller.KeyID, CompanyID: caller.CompanyID,
+			LogicalModel: route.Logical, Provider: route.Provider, Model: response.Model,
+			PromptTokens:     response.Usage.PromptTokens,
+			CompletionTokens: response.Usage.CompletionTokens,
+			TotalTokens:      response.Usage.TotalTokens,
+			LatencyMs:        response.LatencyMs,
+			Outcome:          audit.OutcomeSuccess,
+		})
+
 		writeJSON(w, http.StatusOK, map[string]any{
 			"logicalModel": route.Logical,
 			"provider":     route.Provider,
@@ -167,5 +189,12 @@ func registerCompute(mux *http.ServeMux, d Deps) {
 			"usage":        response.Usage,
 			"latencyMs":    response.LatencyMs,
 		})
-	})
+	}))
+}
+
+func orDefault(value, fallback string) string {
+	if value == "" {
+		return fallback
+	}
+	return value
 }

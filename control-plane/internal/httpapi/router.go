@@ -38,6 +38,17 @@ type Deps struct {
 	Metrics  http.Handler
 	Checkers []Checker
 	Compute  *provider.Registry
+	Auth     Authenticator
+	Keys     KeyAdmin
+	Limiter  RateLimiter
+	Audit    AuditRecorder
+}
+
+// authenticated reports whether the authenticated routes can be served. They
+// are registered together or not at all, so a partially wired process cannot
+// expose an endpoint with its guard missing.
+func (d Deps) authenticated() bool {
+	return d.Auth != nil && d.Limiter != nil && d.Audit != nil
 }
 
 // contextWithTimeout bounds a handler's downstream work without outliving the
@@ -114,6 +125,7 @@ func NewRouter(d Deps) http.Handler {
 	})
 
 	registerCompute(mux, d)
+	registerAdmin(mux, d)
 
 	// Ordering matters, outermost first:
 	//   recoverPanic  - nothing below it can take the process down

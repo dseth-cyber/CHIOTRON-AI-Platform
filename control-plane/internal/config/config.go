@@ -29,11 +29,9 @@ type Config struct {
 	ComputeTimeout       time.Duration
 	ComputeHealthTimeout time.Duration
 
-	// DevUnauthenticatedChat exposes POST /api/v1/chat/completions with no
-	// identity check. It exists only so the provider adapter can be exercised
-	// end to end before the Gateway's JWT middleware lands, and must stay off
-	// anywhere real users can reach the service.
-	DevUnauthenticatedChat bool
+	// DefaultRateLimitPerMinute is the quota applied to a new API key when the
+	// creating call does not name one. Per-key limits live on the key record.
+	DefaultRateLimitPerMinute int
 
 	// Telemetry. VM4 emits OpenTelemetry to the existing Tempo/Loki stack and
 	// is scraped by the existing Prometheus (ARCHITECTURE-v1 section 9); the
@@ -116,8 +114,10 @@ func Load(getenv func(string) string, version string) (Config, error) {
 	if cfg.ComputeHealthTimeout, err = durationVar(getenv, "COMPUTE_HEALTH_TIMEOUT", 5*time.Second); err != nil {
 		fail("%v", err)
 	}
-	if cfg.DevUnauthenticatedChat, err = boolVar(getenv, "DEV_UNAUTHENTICATED_CHAT", false); err != nil {
+	if cfg.DefaultRateLimitPerMinute, err = intVar(getenv, "DEFAULT_RATE_LIMIT_PER_MINUTE", 60); err != nil {
 		fail("%v", err)
+	} else if cfg.DefaultRateLimitPerMinute <= 0 {
+		fail("DEFAULT_RATE_LIMIT_PER_MINUTE must be greater than zero, got %d", cfg.DefaultRateLimitPerMinute)
 	}
 
 	if len(problems) > 0 {
@@ -226,7 +226,7 @@ func (c Config) Redacted() []any {
 		"ollamaBaseURL", c.OllamaBaseURL,
 		"modelRoutes", c.ModelRoutes,
 		"defaultModel", c.DefaultModel,
-		"devUnauthenticatedChat", c.DevUnauthenticatedChat,
+		"defaultRateLimitPerMinute", c.DefaultRateLimitPerMinute,
 		"redisAddr", c.RedisAddr,
 		"redisDB", c.RedisDB,
 		"allowedOrigins", c.AllowedOrigins,

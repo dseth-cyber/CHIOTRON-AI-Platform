@@ -45,9 +45,7 @@ services:
       DEFAULT_MODEL: ${DEFAULT_MODEL:-default}
       COMPUTE_TIMEOUT: ${COMPUTE_TIMEOUT:-120s}
       COMPUTE_HEALTH_TIMEOUT: ${COMPUTE_HEALTH_TIMEOUT:-5s}
-      # Development affordance only. The chat endpoint has no identity check
-      # until the Gateway's JWT middleware lands.
-      DEV_UNAUTHENTICATED_CHAT: ${DEV_UNAUTHENTICATED_CHAT:-false}
+      DEFAULT_RATE_LIMIT_PER_MINUTE: ${DEFAULT_RATE_LIMIT_PER_MINUTE:-60}
       HTTP_ADDR: ${HTTP_ADDR:-:8080}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}

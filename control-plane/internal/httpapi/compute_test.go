@@ -2,11 +2,12 @@ package httpapi
 
 import (
 	"context"
+	"errors"
 	"net/http"
-	"net/http/httptest"
-	"strings"
 	"testing"
 
+	"github.com/chiotron/ai-control-plane/internal/audit"
+	"github.com/chiotron/ai-control-plane/internal/auth"
 	"github.com/chiotron/ai-control-plane/internal/provider"
 )
 
@@ -32,10 +33,20 @@ func (f *fakeProvider) Chat(_ context.Context, req provider.ChatRequest) (provid
 	if f.chatErr != nil {
 		return provider.ChatResponse{}, f.chatErr
 	}
-	return provider.ChatResponse{Model: req.Model, Content: "hello", FinishReason: "stop"}, nil
+	return provider.ChatResponse{
+		Model: req.Model, Content: "hello", FinishReason: "stop",
+		Usage:     provider.Usage{PromptTokens: 11, CompletionTokens: 4, TotalTokens: 15},
+		LatencyMs: 42,
+	}, nil
 }
 
-func computeRouter(t *testing.T, devChat bool, p *fakeProvider) http.Handler {
+type computeFixture struct {
+	handler http.Handler
+	audit   *fakeAudit
+	limiter *fakeLimiter
+}
+
+func newComputeFixture(t *testing.T, p *fakeProvider, mutate ...func(*Deps)) computeFixture {
 	t.Helper()
 	routes, err := provider.ParseRoutes("default=ollama/qwen2.5:0.5b")
 	if err != nil {
@@ -46,9 +57,20 @@ func computeRouter(t *testing.T, devChat bool, p *fakeProvider) http.Handler {
 		t.Fatalf("NewRegistry() returned error: %v", err)
 	}
 
-	cfg := testConfig()
-	cfg.DevUnauthenticatedChat = devChat
-	return NewRouter(Deps{Config: cfg, Log: quietLogger(), Compute: registry})
+	recorder := &fakeAudit{}
+	limiter := allowingLimiter()
+	deps := Deps{
+		Config:  testConfig(),
+		Log:     quietLogger(),
+		Compute: registry,
+		Auth:    &fakeAuthenticator{identity: fullyScopedIdentity()},
+		Limiter: limiter,
+		Audit:   recorder,
+	}
+	for _, apply := range mutate {
+		apply(&deps)
+	}
+	return computeFixture{handler: NewRouter(deps), audit: recorder, limiter: limiter}
 }
 
 func availableProvider() *fakeProvider {
@@ -59,7 +81,7 @@ func availableProvider() *fakeProvider {
 // VM5; it does not fail with it.
 func TestComputeHealthReportsUnavailableWithoutFailing(t *testing.T) {
 	down := &fakeProvider{name: "ollama", healthErr: provider.ErrUnavailable}
-	rec := get(t, computeRouter(t, false, down), "/api/v1/compute/health", nil)
+	rec := authedGet(t, newComputeFixture(t, down).handler, "/api/v1/compute/health")
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200 - this endpoint reports, it does not fail", rec.Code)
@@ -75,7 +97,7 @@ func TestComputeHealthReportsUnavailableWithoutFailing(t *testing.T) {
 }
 
 func TestComputeHealthReportsAvailable(t *testing.T) {
-	rec := get(t, computeRouter(t, false, availableProvider()), "/api/v1/compute/health", nil)
+	rec := authedGet(t, newComputeFixture(t, availableProvider()).handler, "/api/v1/compute/health")
 
 	body := decode(t, rec)
 	if body["status"] != "available" {
@@ -90,7 +112,7 @@ func TestComputeHealthReportsAvailable(t *testing.T) {
 // A failing compute plane must not make the Control Plane itself not-ready.
 func TestComputeFailureDoesNotAffectReadiness(t *testing.T) {
 	down := &fakeProvider{name: "ollama", healthErr: provider.ErrUnavailable}
-	rec := get(t, computeRouter(t, false, down), "/readyz", nil)
+	rec := get(t, newComputeFixture(t, down).handler, "/readyz", nil)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("/readyz status = %d, want 200 when only the compute plane is down", rec.Code)
@@ -98,7 +120,7 @@ func TestComputeFailureDoesNotAffectReadiness(t *testing.T) {
 }
 
 func TestModelsReportsRouteAvailability(t *testing.T) {
-	rec := get(t, computeRouter(t, false, availableProvider()), "/api/v1/models", nil)
+	rec := authedGet(t, newComputeFixture(t, availableProvider()).handler, "/api/v1/models")
 
 	body := decode(t, rec)
 	if body["default"] != "default" {
@@ -118,8 +140,7 @@ func TestModelsReportsRouteAvailability(t *testing.T) {
 }
 
 func TestModelsMarksMissingUpstreamModelUnavailable(t *testing.T) {
-	empty := &fakeProvider{name: "ollama"}
-	rec := get(t, computeRouter(t, false, empty), "/api/v1/models", nil)
+	rec := authedGet(t, newComputeFixture(t, &fakeProvider{name: "ollama"}).handler, "/api/v1/models")
 
 	entry := decode(t, rec)["models"].([]any)[0].(map[string]any)
 	if entry["available"] != false {
@@ -127,30 +148,9 @@ func TestModelsMarksMissingUpstreamModelUnavailable(t *testing.T) {
 	}
 }
 
-// The unauthenticated chat route is a development affordance and must be
-// absent unless it is explicitly switched on.
-func TestChatRouteAbsentByDefault(t *testing.T) {
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/completions",
-		strings.NewReader(`{"messages":[{"role":"user","content":"hi"}]}`))
-	rec := httptest.NewRecorder()
-	computeRouter(t, false, availableProvider()).ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusNotFound {
-		t.Fatalf("status = %d, want 404 while DEV_UNAUTHENTICATED_CHAT is off", rec.Code)
-	}
-}
-
-func postChat(t *testing.T, handler http.Handler, body string) *httptest.ResponseRecorder {
-	t.Helper()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/completions", strings.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, req)
-	return rec
-}
-
 func TestChatReturnsCompletion(t *testing.T) {
-	rec := postChat(t, computeRouter(t, true, availableProvider()),
+	fixture := newComputeFixture(t, availableProvider())
+	rec := authedPost(t, fixture.handler, "/api/v1/chat/completions",
 		`{"messages":[{"role":"user","content":"hi"}]}`)
 
 	if rec.Code != http.StatusOK {
@@ -166,8 +166,45 @@ func TestChatReturnsCompletion(t *testing.T) {
 	}
 }
 
+// Every model call creates usage metadata (ARCHITECTURE-v1 section 5).
+func TestChatRecordsUsage(t *testing.T) {
+	fixture := newComputeFixture(t, availableProvider())
+	authedPost(t, fixture.handler, "/api/v1/chat/completions", `{"messages":[{"role":"user","content":"hi"}]}`)
+
+	if len(fixture.audit.usage) != 1 {
+		t.Fatalf("recorded %d usage events, want 1", len(fixture.audit.usage))
+	}
+	usage := fixture.audit.usage[0]
+	if usage.TotalTokens != 15 || usage.PromptTokens != 11 || usage.CompletionTokens != 4 {
+		t.Errorf("usage tokens = %+v, want the provider's counts", usage)
+	}
+	if usage.Outcome != audit.OutcomeSuccess {
+		t.Errorf("outcome = %q, want success", usage.Outcome)
+	}
+	if usage.APIKeyID != fullyScopedIdentity().KeyID {
+		t.Errorf("apiKeyId = %q, want the calling key", usage.APIKeyID)
+	}
+}
+
+// A failed call still consumed capacity, so it must still be accounted for.
+func TestChatRecordsUsageOnFailure(t *testing.T) {
+	down := &fakeProvider{name: "ollama", chatErr: provider.ErrUnavailable}
+	fixture := newComputeFixture(t, down)
+	rec := authedPost(t, fixture.handler, "/api/v1/chat/completions", `{"messages":[{"role":"user","content":"hi"}]}`)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", rec.Code)
+	}
+	if len(fixture.audit.usage) != 1 {
+		t.Fatalf("recorded %d usage events, want 1 even though the call failed", len(fixture.audit.usage))
+	}
+	if outcome := fixture.audit.usage[0].Outcome; outcome != audit.OutcomeFailure {
+		t.Errorf("outcome = %q, want failure", outcome)
+	}
+}
+
 func TestChatRejectsBadRequests(t *testing.T) {
-	handler := computeRouter(t, true, availableProvider())
+	handler := newComputeFixture(t, availableProvider()).handler
 
 	cases := map[string]struct {
 		body string
@@ -180,19 +217,50 @@ func TestChatRejectsBadRequests(t *testing.T) {
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			if rec := postChat(t, handler, tc.body); rec.Code != tc.want {
+			if rec := authedPost(t, handler, "/api/v1/chat/completions", tc.body); rec.Code != tc.want {
 				t.Errorf("status = %d, want %d (%s)", rec.Code, tc.want, rec.Body.String())
 			}
 		})
 	}
 }
 
-// An unreachable compute plane is a 503 about VM5, not a 500 about VM4.
-func TestChatReportsComputeOutageAs503(t *testing.T) {
-	down := &fakeProvider{name: "ollama", chatErr: provider.ErrUnavailable}
-	rec := postChat(t, computeRouter(t, true, down), `{"messages":[{"role":"user","content":"hi"}]}`)
+// Compute routes must never be reachable without a credential.
+func TestComputeRoutesRequireAuthentication(t *testing.T) {
+	handler := newComputeFixture(t, availableProvider()).handler
 
-	if rec.Code != http.StatusServiceUnavailable {
-		t.Fatalf("status = %d, want 503", rec.Code)
+	for _, path := range []string{"/api/v1/models", "/api/v1/compute/health"} {
+		if rec := get(t, handler, path, nil); rec.Code != http.StatusUnauthorized {
+			t.Errorf("GET %s without a key = %d, want 401", path, rec.Code)
+		}
+	}
+}
+
+// A key without chat:completions may still read the catalogue, and vice versa.
+func TestComputeRoutesEnforceScopes(t *testing.T) {
+	readOnly := auth.Identity{KeyID: "k", Scopes: []string{auth.ScopeModelsRead}, RateLimitPerMinute: 60}
+	fixture := newComputeFixture(t, availableProvider(), func(d *Deps) {
+		d.Auth = &fakeAuthenticator{identity: readOnly}
+	})
+
+	if rec := authedGet(t, fixture.handler, "/api/v1/models"); rec.Code != http.StatusOK {
+		t.Errorf("GET /api/v1/models with models:read = %d, want 200", rec.Code)
+	}
+
+	rec := authedPost(t, fixture.handler, "/api/v1/chat/completions", `{"messages":[{"role":"user","content":"hi"}]}`)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("chat without chat:completions = %d, want 403", rec.Code)
+	}
+	if event := fixture.audit.lastEvent(t); event.Outcome != audit.OutcomeDenied {
+		t.Errorf("denied request recorded outcome %q, want denied", event.Outcome)
+	}
+}
+
+func TestChatSurfacesUnexpectedProviderErrorAs502(t *testing.T) {
+	broken := &fakeProvider{name: "ollama", chatErr: errors.New("boom")}
+	rec := authedPost(t, newComputeFixture(t, broken).handler, "/api/v1/chat/completions",
+		`{"messages":[{"role":"user","content":"hi"}]}`)
+
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d, want 502", rec.Code)
 	}
 }
