@@ -39,6 +39,19 @@ type Config struct {
 	PersistPrompts   bool
 	HistoryTurnLimit int
 
+	// Knowledge platform. The storage provider of record and the classification
+	// policy are open decisions (ARCHITECTURE-v1 section 13 items 5 and 6), so
+	// both are configuration and the code names neither.
+	StorageRoot          string
+	EmbeddingModel       string
+	EmbeddingDimensions  int
+	ClassificationLevels []string
+	ChunkSize            int
+	ChunkOverlap         int
+	MaxDocumentBytes     int
+	IngestionInterval    time.Duration
+	IngestionBatch       int
+
 	// Telemetry. VM4 emits OpenTelemetry to the existing Tempo/Loki stack and
 	// is scraped by the existing Prometheus (ARCHITECTURE-v1 section 9); the
 	// platform does not run a monitoring stack of its own.
@@ -68,10 +81,14 @@ func Load(getenv func(string) string, version string) (Config, error) {
 		AllowedOrigins:  listVar(getenv, "CORS_ALLOWED_ORIGINS", "http://localhost:5173"),
 		ModelRoutes:     stringVar(getenv, "MODEL_ROUTES", "default=ollama/qwen2.5:0.5b"),
 		DefaultModel:    stringVar(getenv, "DEFAULT_MODEL", "default"),
-		ServiceName:     stringVar(getenv, "OTEL_SERVICE_NAME", "ai-control-plane"),
-		ServiceVersion:  version,
-		Environment:     stringVar(getenv, "DEPLOYMENT_ENVIRONMENT", "development"),
-		OTLPEndpoint:    stringVar(getenv, "OTEL_EXPORTER_OTLP_ENDPOINT", ""),
+		StorageRoot:     stringVar(getenv, "STORAGE_ROOT", "/var/lib/chiotron/documents"),
+		EmbeddingModel:  stringVar(getenv, "EMBEDDING_MODEL", "nomic-embed-text"),
+		ClassificationLevels: listVar(getenv, "CLASSIFICATION_LEVELS",
+			"public,internal,confidential,restricted"),
+		ServiceName:    stringVar(getenv, "OTEL_SERVICE_NAME", "ai-control-plane"),
+		ServiceVersion: version,
+		Environment:    stringVar(getenv, "DEPLOYMENT_ENVIRONMENT", "development"),
+		OTLPEndpoint:   stringVar(getenv, "OTEL_EXPORTER_OTLP_ENDPOINT", ""),
 	}
 
 	var problems []string
@@ -132,6 +149,38 @@ func Load(getenv func(string) string, version string) (Config, error) {
 		fail("%v", err)
 	} else if cfg.HistoryTurnLimit <= 0 {
 		fail("HISTORY_TURN_LIMIT must be greater than zero, got %d", cfg.HistoryTurnLimit)
+	}
+
+	if len(cfg.ClassificationLevels) == 0 {
+		fail("CLASSIFICATION_LEVELS must list at least one level, least sensitive first")
+	}
+	// The schema pins the vector width, so a mismatch has to be caught here
+	// rather than after a re-embedding pass has written unusable rows.
+	if cfg.EmbeddingDimensions, err = intVar(getenv, "EMBEDDING_DIMENSIONS", 768); err != nil {
+		fail("%v", err)
+	} else if cfg.EmbeddingDimensions != 768 {
+		fail("EMBEDDING_DIMENSIONS is %d but the chunks table declares vector(768); "+
+			"changing the embedding model needs a migration and a re-embedding pass",
+			cfg.EmbeddingDimensions)
+	}
+	if cfg.ChunkSize, err = intVar(getenv, "CHUNK_SIZE", 1200); err != nil {
+		fail("%v", err)
+	}
+	if cfg.ChunkOverlap, err = intVar(getenv, "CHUNK_OVERLAP", 150); err != nil {
+		fail("%v", err)
+	}
+	if cfg.MaxDocumentBytes, err = intVar(getenv, "MAX_DOCUMENT_BYTES", 5<<20); err != nil {
+		fail("%v", err)
+	} else if cfg.MaxDocumentBytes <= 0 {
+		fail("MAX_DOCUMENT_BYTES must be greater than zero, got %d", cfg.MaxDocumentBytes)
+	}
+	if cfg.IngestionInterval, err = durationVar(getenv, "INGESTION_INTERVAL", 5*time.Second); err != nil {
+		fail("%v", err)
+	}
+	if cfg.IngestionBatch, err = intVar(getenv, "INGESTION_BATCH", 4); err != nil {
+		fail("%v", err)
+	} else if cfg.IngestionBatch <= 0 {
+		fail("INGESTION_BATCH must be greater than zero, got %d", cfg.IngestionBatch)
 	}
 
 	if len(problems) > 0 {
@@ -243,6 +292,12 @@ func (c Config) Redacted() []any {
 		"defaultRateLimitPerMinute", c.DefaultRateLimitPerMinute,
 		"persistPrompts", c.PersistPrompts,
 		"historyTurnLimit", c.HistoryTurnLimit,
+		"storageRoot", c.StorageRoot,
+		"embeddingModel", c.EmbeddingModel,
+		"embeddingDimensions", c.EmbeddingDimensions,
+		"classificationLevels", c.ClassificationLevels,
+		"chunkSize", c.ChunkSize,
+		"chunkOverlap", c.ChunkOverlap,
 		"redisAddr", c.RedisAddr,
 		"redisDB", c.RedisDB,
 		"allowedOrigins", c.AllowedOrigins,

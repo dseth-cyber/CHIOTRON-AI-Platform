@@ -38,6 +38,11 @@ Ollama and model credentials are deliberately never exposed to browsers.
 | `GET /api/v1/assistants` | Assistant catalogue, filtered by the caller's company. Needs `assistants:read`. |
 | `GET /api/v1/conversations` | The caller's own conversations. Needs `chat:completions`. |
 | `GET/DELETE /api/v1/conversations/{id}` | One transcript, or soft-delete it. Needs `chat:completions`. |
+| `POST /api/v1/documents` | Upload a document for ingestion. Needs `knowledge:write`. |
+| `GET /api/v1/documents` | Documents the caller may read, plus corpus status. Needs `knowledge:read`. |
+| `GET /api/v1/documents/{id}` | One document. Needs `knowledge:read`. |
+| `DELETE /api/v1/documents/{id}` | Withdraw a document and its chunks. Needs `knowledge:write`. |
+| `POST /api/v1/knowledge/search` | Permission-filtered hybrid retrieval. Needs `knowledge:read`. |
 | `GET/POST /api/v1/admin/api-keys` | List and mint API keys. Needs `admin:keys`. |
 | `POST /api/v1/admin/assistants` | Create an assistant. Needs `admin:assistants`. |
 | `POST /api/v1/admin/api-keys/{id}/revoke` | Revoke a key. Needs `admin:keys`. |
@@ -127,6 +132,30 @@ All runtime settings come from the environment; see `.env.example` for the full 
 The Control Plane owns its schema. Migrations live in `control-plane/internal/migrations`, are embedded in the binary and are applied at startup under a PostgreSQL advisory lock, so a schema change reaches an existing database instead of requiring a volume wipe. `infra/postgres/init.sql` is reduced to privileged bootstrap (`CREATE EXTENSION vector`) because it only ever runs on an empty data volume.
 
 To add a migration, create `control-plane/internal/migrations/NNNN_description.sql` and rebuild. Applied migrations are recorded in `schema_migrations` with a checksum; editing an already-applied file is rejected at startup rather than silently ignored.
+
+## Knowledge platform
+
+A document is uploaded, stored through `StorageProvider`, then picked up by the ingestion worker: parse, chunk, embed, store. Upload returns `202` with the document in `pending`; the worker moves it to `ready` or to `failed` with the reason on the row, so an operator can fix the input without reading logs.
+
+**Source ACL metadata travels with every chunk** (ARCHITECTURE-v1 section 6). Company, department and classification are copied onto each chunk, and retrieval applies all three as SQL predicates *before* ranking — the predicates are repeated inside each candidate query rather than shared through a CTE, so the planner can still reach the HNSW and GIN indexes.
+
+The three ABAC dimensions come from the credential, never from the request: an API key carries a company, a department and the highest classification it may read. A caller also cannot file a document above its own clearance, which would create content it could not itself retrieve.
+
+```powershell
+docker compose run --rm --no-deps api apikey create -name analyst `
+  -classification internal -department finance -company acme
+```
+
+`CLASSIFICATION_LEVELS` is the ladder, least sensitive first — it is configuration because the policy of record is an open decision (section 13 item 5). An unknown level is never readable: `Allows` fails closed, including for a zero-valued policy.
+
+**Retrieval is hybrid**: pgvector cosine similarity fused with PostgreSQL full-text rank by reciprocal rank fusion. Two details matter for it to work at all:
+
+- The text search configuration is `simple`, not `english`. The corpus is multilingual and English stemming would mangle Thai, Chinese, Japanese and Burmese content.
+- `plainto_tsquery` ANDs every term, and `simple` strips no stopwords, so a question like *"how much VRAM does the development GPU have"* matched nothing — the keyword half of the hybrid was dead. The operators are rewritten to OR, which is what a retrieval query means.
+
+Embeddings come from `nomic-embed-text` at 768 dimensions, which the `chunks` table pins as `vector(768)`. Changing the embedding model changes that width, so it needs a migration and a re-embedding pass rather than a configuration flip — `EMBEDDING_DIMENSIONS` is validated against the schema at startup to make that explicit.
+
+Only `text/plain` and `text/markdown` are accepted today. PDF and office formats need a parsing dependency and arrive with the connector work; rejecting them is better than storing bytes nothing can read.
 
 ## Observability
 

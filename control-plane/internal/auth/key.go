@@ -38,6 +38,8 @@ const (
 	// conversations: a transcript is part of using chat, not a separate
 	// capability, and it is only ever visible to the credential that created it.
 	ScopeChatCompletion  = "chat:completions"
+	ScopeKnowledgeRead   = "knowledge:read"
+	ScopeKnowledgeWrite  = "knowledge:write"
 	ScopeAdminKeys       = "admin:keys"
 	ScopeAdminAssistants = "admin:assistants"
 )
@@ -45,6 +47,7 @@ const (
 // KnownScopes lists every scope the Control Plane understands today.
 var KnownScopes = []string{
 	ScopeModelsRead, ScopeAssistantsRead, ScopeChatCompletion,
+	ScopeKnowledgeRead, ScopeKnowledgeWrite,
 	ScopeAdminKeys, ScopeAdminAssistants,
 }
 

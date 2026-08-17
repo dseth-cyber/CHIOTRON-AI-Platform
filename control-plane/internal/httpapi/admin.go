@@ -22,6 +22,8 @@ type createKeyBody struct {
 	Name               string   `json:"name"`
 	Scopes             []string `json:"scopes"`
 	CompanyID          string   `json:"companyId,omitempty"`
+	Department         string   `json:"department,omitempty"`
+	MaxClassification  string   `json:"maxClassification,omitempty"`
 	RateLimitPerMinute int      `json:"rateLimitPerMinute,omitempty"`
 	ExpiresAt          *string  `json:"expiresAt,omitempty"`
 }
@@ -58,10 +60,36 @@ func registerAdmin(mux *http.ServeMux, d Deps) {
 			body.RateLimitPerMinute = d.Config.DefaultRateLimitPerMinute
 		}
 
+		// A company-scoped key cannot mint one for another company.
+		companyID := body.CompanyID
+		if caller.CompanyID != "" {
+			if companyID != "" && companyID != caller.CompanyID {
+				d.recordDenied(r, caller, auth.ScopeAdminKeys, "company mismatch")
+				writeJSON(w, http.StatusForbidden, map[string]string{
+					"error": "cannot create a key for another company",
+				})
+				return
+			}
+			companyID = caller.CompanyID
+		}
+
+		// A key cannot mint one that reads above its own clearance: that would
+		// make admin:keys a privilege-escalation path.
+		clearance := body.MaxClassification
+		if clearance != "" && !d.Knowledge.Policy.Allows(caller.MaxClassification, clearance) {
+			d.recordDenied(r, caller, auth.ScopeAdminKeys, "clearance above own")
+			writeJSON(w, http.StatusForbidden, map[string]string{
+				"error": "cannot grant a clearance above this key's own",
+			})
+			return
+		}
+
 		record, secret, err := d.Keys.Create(r.Context(), auth.CreateParams{
 			Name:               body.Name,
 			Scopes:             body.Scopes,
-			CompanyID:          body.CompanyID,
+			CompanyID:          companyID,
+			Department:         body.Department,
+			MaxClassification:  clearance,
 			RateLimitPerMinute: body.RateLimitPerMinute,
 			CreatedBy:          caller.KeyID,
 			ExpiresAt:          expiresAt,

@@ -30,6 +30,11 @@ func testConfig() config.Config {
 		ComputeHealthTimeout: time.Second,
 		PersistPrompts:       true,
 		HistoryTurnLimit:     20,
+		MaxDocumentBytes:     1 << 20,
+		ChunkSize:            1200,
+		ChunkOverlap:         150,
+		EmbeddingDimensions:  768,
+		ClassificationLevels: []string{"public", "internal", "confidential", "restricted"},
 	}
 }
 

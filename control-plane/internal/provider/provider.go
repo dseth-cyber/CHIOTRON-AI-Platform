@@ -75,6 +75,22 @@ type LLM interface {
 	Chat(ctx context.Context, req ChatRequest) (ChatResponse, error)
 }
 
+// EmbeddingProvider turns text into vectors.
+//
+// It is a separate interface from LLM because the two are separate decisions: a
+// deployment may serve completions from vLLM while embedding stays on Ollama
+// (ARCHITECTURE-v1 section 4).
+type EmbeddingProvider interface {
+	Name() string
+	// Model reports the embedding model in use, so a stored vector can be traced
+	// to what produced it.
+	Model() string
+	// Dimensions is the vector width this provider emits. The schema pins it, so
+	// a mismatch has to fail loudly rather than write unusable rows.
+	Dimensions() int
+	Embed(ctx context.Context, inputs []string) ([][]float32, error)
+}
+
 // StreamingLLM is implemented by providers that can emit a response
 // incrementally. It is optional: a provider without it still works, and the
 // Registry degrades to a single chunk rather than refusing the request.

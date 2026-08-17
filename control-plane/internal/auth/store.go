@@ -20,11 +20,17 @@ var ErrInvalidKey = errors.New("invalid api key")
 var ErrKeyNotFound = errors.New("api key not found")
 
 // Identity is the authenticated caller attached to a request context.
+//
+// CompanyID, Department and MaxClassification are the ABAC dimensions from
+// ARCHITECTURE-v1 section 5. They come from the credential, never from a header
+// or request body.
 type Identity struct {
 	KeyID              string   `json:"keyId"`
 	Name               string   `json:"name"`
 	Scopes             []string `json:"scopes"`
 	CompanyID          string   `json:"companyId,omitempty"`
+	Department         string   `json:"department,omitempty"`
+	MaxClassification  string   `json:"maxClassification"`
 	RateLimitPerMinute int      `json:"rateLimitPerMinute"`
 }
 
@@ -44,6 +50,8 @@ type Record struct {
 	Prefix             string     `json:"prefix"`
 	Scopes             []string   `json:"scopes"`
 	CompanyID          string     `json:"companyId,omitempty"`
+	Department         string     `json:"department,omitempty"`
+	MaxClassification  string     `json:"maxClassification"`
 	RateLimitPerMinute int        `json:"rateLimitPerMinute"`
 	CreatedBy          string     `json:"createdBy"`
 	CreatedAt          time.Time  `json:"createdAt"`
@@ -56,6 +64,8 @@ type CreateParams struct {
 	Name               string
 	Scopes             []string
 	CompanyID          string
+	Department         string
+	MaxClassification  string
 	RateLimitPerMinute int
 	CreatedBy          string
 	ExpiresAt          *time.Time
@@ -68,6 +78,7 @@ type Store struct {
 func NewStore(pool *pgxpool.Pool) *Store { return &Store{pool: pool} }
 
 const recordColumns = `id::text, name, prefix, scopes, coalesce(company_id, ''),
+	coalesce(department, ''), max_classification,
 	rate_limit_per_minute, created_by, created_at, expires_at, last_used_at, revoked_at`
 
 // Create mints a key and returns the raw value. That value is the only copy:
@@ -89,13 +100,19 @@ func (s *Store) Create(ctx context.Context, params CreateParams) (Record, string
 		return Record{}, "", err
 	}
 
+	classification := params.MaxClassification
+	if classification == "" {
+		// The column default carries the deployment's own baseline.
+		classification = "internal"
+	}
+
 	row := s.pool.QueryRow(ctx, `
-		INSERT INTO api_keys (name, prefix, secret_hash, scopes, company_id,
-		                      rate_limit_per_minute, created_by, expires_at)
-		VALUES ($1, $2, $3, $4, nullif($5, ''), $6, $7, $8)
+		INSERT INTO api_keys (name, prefix, secret_hash, scopes, company_id, department,
+		                      max_classification, rate_limit_per_minute, created_by, expires_at)
+		VALUES ($1, $2, $3, $4, nullif($5, ''), nullif($6, ''), $7, $8, $9, $10)
 		RETURNING `+recordColumns,
 		params.Name, generated.Prefix, generated.SecretHash, scopes, params.CompanyID,
-		params.RateLimitPerMinute, params.CreatedBy, params.ExpiresAt)
+		params.Department, classification, params.RateLimitPerMinute, params.CreatedBy, params.ExpiresAt)
 
 	record, err := scanRecord(row)
 	if err != nil {
@@ -115,21 +132,25 @@ func (s *Store) Authenticate(ctx context.Context, presented string) (Identity, s
 	}
 
 	var (
-		id        string
-		name      string
-		hash      string
-		scopes    []string
-		companyID string
-		limit     int
-		expiresAt *time.Time
-		revokedAt *time.Time
+		id             string
+		name           string
+		hash           string
+		scopes         []string
+		companyID      string
+		department     string
+		classification string
+		limit          int
+		expiresAt      *time.Time
+		revokedAt      *time.Time
 	)
 	err = s.pool.QueryRow(ctx, `
 		SELECT id::text, name, secret_hash, scopes, coalesce(company_id, ''),
+		       coalesce(department, ''), max_classification,
 		       rate_limit_per_minute, expires_at, revoked_at
 		FROM api_keys
 		WHERE prefix = $1 AND deleted_at IS NULL`, prefix).
-		Scan(&id, &name, &hash, &scopes, &companyID, &limit, &expiresAt, &revokedAt)
+		Scan(&id, &name, &hash, &scopes, &companyID, &department, &classification,
+			&limit, &expiresAt, &revokedAt)
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):
 		return Identity{}, "unknown prefix", ErrInvalidKey
@@ -154,6 +175,8 @@ func (s *Store) Authenticate(ctx context.Context, presented string) (Identity, s
 		Name:               name,
 		Scopes:             scopes,
 		CompanyID:          companyID,
+		Department:         department,
+		MaxClassification:  classification,
 		RateLimitPerMinute: limit,
 	}, "", nil
 }
@@ -217,6 +240,7 @@ type scannable interface {
 func scanRecord(row scannable) (Record, error) {
 	var record Record
 	err := row.Scan(&record.ID, &record.Name, &record.Prefix, &record.Scopes, &record.CompanyID,
+		&record.Department, &record.MaxClassification,
 		&record.RateLimitPerMinute, &record.CreatedBy, &record.CreatedAt,
 		&record.ExpiresAt, &record.LastUsedAt, &record.RevokedAt)
 	return record, err

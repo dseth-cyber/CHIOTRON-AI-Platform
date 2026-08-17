@@ -49,6 +49,17 @@ services:
       # Conversation retention and prompt logging are policy settings.
       PERSIST_PROMPTS: ${PERSIST_PROMPTS:-true}
       HISTORY_TURN_LIMIT: ${HISTORY_TURN_LIMIT:-20}
+      # Knowledge platform. StorageProvider is the local adapter in development;
+      # the production provider of record is still an open decision.
+      STORAGE_ROOT: ${STORAGE_ROOT:-/var/lib/chiotron/documents}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-embed-text}
+      EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-768}
+      CLASSIFICATION_LEVELS: ${CLASSIFICATION_LEVELS:-public,internal,confidential,restricted}
+      CHUNK_SIZE: ${CHUNK_SIZE:-1200}
+      CHUNK_OVERLAP: ${CHUNK_OVERLAP:-150}
+      MAX_DOCUMENT_BYTES: ${MAX_DOCUMENT_BYTES:-5242880}
+      INGESTION_INTERVAL: ${INGESTION_INTERVAL:-5s}
+      INGESTION_BATCH: ${INGESTION_BATCH:-4}
       HTTP_ADDR: ${HTTP_ADDR:-:8080}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
@@ -62,6 +73,13 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       OTEL_EXPORTER_OTLP_INSECURE: ${OTEL_EXPORTER_OTLP_INSECURE:-true}
       OTEL_TRACES_SAMPLER_ARG: ${OTEL_TRACES_SAMPLER_ARG:-1.0}
+    volumes:
+      # Documents outlive the container, and the platform never keeps the only
+      # copy of one inside the database. A fresh volume inherits the image
+      # directory's nonroot ownership, which is why control-plane/Dockerfile
+      # creates it: a volume created empty would be owned by root and the
+      # nonroot process could not write to it.
+      - document-data:/var/lib/chiotron/documents
     # The distroless image ships no shell, so readiness is verified from the
     # host with `curl http://localhost:8080/readyz` rather than a compose
     # healthcheck. Production uses an HTTP probe against /readyz.
@@ -117,3 +135,4 @@ volumes:
   postgres-data:
   redis-data:
   ollama-data:
+  document-data:

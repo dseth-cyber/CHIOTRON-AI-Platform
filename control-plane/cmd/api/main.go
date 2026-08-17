@@ -24,17 +24,21 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/chiotron/ai-control-plane/internal/assistant"
 	"github.com/chiotron/ai-control-plane/internal/audit"
 	"github.com/chiotron/ai-control-plane/internal/auth"
 	"github.com/chiotron/ai-control-plane/internal/config"
 	"github.com/chiotron/ai-control-plane/internal/conversation"
 	"github.com/chiotron/ai-control-plane/internal/httpapi"
+	"github.com/chiotron/ai-control-plane/internal/knowledge"
 	"github.com/chiotron/ai-control-plane/internal/migrate"
 	"github.com/chiotron/ai-control-plane/internal/migrations"
 	"github.com/chiotron/ai-control-plane/internal/provider"
 	"github.com/chiotron/ai-control-plane/internal/provider/ollama"
 	"github.com/chiotron/ai-control-plane/internal/ratelimit"
+	"github.com/chiotron/ai-control-plane/internal/storage"
 	"github.com/chiotron/ai-control-plane/internal/store"
 	"github.com/chiotron/ai-control-plane/internal/telemetry"
 )
@@ -105,6 +109,11 @@ func run() error {
 		return err
 	}
 
+	knowledgeDeps, err := buildKnowledge(ctx, cfg, pool, log)
+	if err != nil {
+		return err
+	}
+
 	keys := auth.NewStore(pool)
 	handler := httpapi.NewRouter(httpapi.Deps{
 		Config:        cfg,
@@ -117,6 +126,7 @@ func run() error {
 		Audit:         audit.NewRecorder(pool, log),
 		Assistants:    assistant.NewStore(pool),
 		Conversations: conversation.NewStore(pool, cfg.PersistPrompts),
+		Knowledge:     knowledgeDeps,
 		Checkers: []httpapi.Checker{
 			httpapi.CheckerFunc{DependencyName: "postgres", Probe: pool.Ping},
 			httpapi.CheckerFunc{DependencyName: "redis", Probe: func(ctx context.Context) error {
@@ -161,6 +171,48 @@ func run() error {
 	return nil
 }
 
+// buildKnowledge wires the corpus: storage adapter, embedding provider,
+// classification policy and the ingestion worker.
+//
+// The worker runs for as long as ctx lives, which is until the process is asked
+// to stop. It is started here rather than in run() so everything the knowledge
+// platform needs is assembled in one place.
+func buildKnowledge(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log *slog.Logger) (httpapi.Knowledge, error) {
+	policy, err := knowledge.NewPolicy(cfg.ClassificationLevels)
+	if err != nil {
+		return httpapi.Knowledge{}, fmt.Errorf("classification policy: %w", err)
+	}
+	plan, err := knowledge.NewChunkPlan(cfg.ChunkSize, cfg.ChunkOverlap)
+	if err != nil {
+		return httpapi.Knowledge{}, fmt.Errorf("chunk plan: %w", err)
+	}
+	objects, err := storage.NewLocal(cfg.StorageRoot)
+	if err != nil {
+		return httpapi.Knowledge{}, err
+	}
+
+	embedder := ollama.NewEmbedder(cfg.OllamaBaseURL, cfg.EmbeddingModel, cfg.EmbeddingDimensions, cfg.ComputeTimeout)
+	documents := knowledge.NewStore(pool)
+
+	// Ingestion never blocks startup: the compute plane may be down, and
+	// documents simply wait as pending until it returns.
+	worker := knowledge.NewWorker(documents, objects, embedder, plan,
+		cfg.IngestionInterval, cfg.IngestionBatch, log)
+	go worker.Run(ctx)
+
+	log.Info("knowledge platform ready",
+		"storage", objects.Name(), "root", cfg.StorageRoot,
+		"classifications", policy.Levels(),
+		"chunkSize", plan.Size, "chunkOverlap", plan.Overlap)
+
+	return httpapi.Knowledge{
+		Documents: documents,
+		Storage:   objects,
+		Embedder:  embedder,
+		Policy:    policy,
+	}, nil
+}
+
 // runAPIKey mints the first key.
 //
 // Key creation over HTTP requires the admin:keys scope, which no key holds
@@ -175,6 +227,8 @@ func runAPIKey(args []string) error {
 	name := flags.String("name", "", "human-readable key name")
 	scopes := flags.String("scopes", strings.Join(auth.KnownScopes, ","), "comma-separated scopes")
 	company := flags.String("company", "", "company id this key is scoped to")
+	department := flags.String("department", "", "department this key is scoped to")
+	classification := flags.String("classification", "", "highest classification this key may read")
 	rate := flags.Int("rate", 0, "requests per minute (defaults to DEFAULT_RATE_LIMIT_PER_MINUTE)")
 	expires := flags.String("expires", "", "RFC3339 expiry timestamp")
 	if err := flags.Parse(args[1:]); err != nil {
@@ -204,10 +258,25 @@ func runAPIKey(args []string) error {
 		return err
 	}
 
+	// An unset clearance falls to the column default rather than the top of the
+	// ladder: a key should not silently gain access to everything.
+	clearance := *classification
+	if clearance != "" {
+		policy, err := knowledge.NewPolicy(cfg.ClassificationLevels)
+		if err != nil {
+			return err
+		}
+		if clearance, err = policy.Normalise(clearance); err != nil {
+			return err
+		}
+	}
+
 	params := auth.CreateParams{
 		Name:               *name,
 		Scopes:             strings.Split(*scopes, ","),
 		CompanyID:          *company,
+		Department:         *department,
+		MaxClassification:  clearance,
 		RateLimitPerMinute: cfg.DefaultRateLimitPerMinute,
 		CreatedBy:          "cli",
 	}
@@ -234,8 +303,9 @@ func runAPIKey(args []string) error {
 
 	// stdout carries the secret and nothing else, so it can be captured without
 	// dragging log lines along. It is never written to the log.
-	fmt.Printf("id      %s\nname    %s\nscopes  %s\nrate    %d/min\nsecret  %s\n",
-		record.ID, record.Name, strings.Join(record.Scopes, ","), record.RateLimitPerMinute, secret)
+	fmt.Printf("id        %s\nname      %s\nscopes    %s\nclearance %s\nrate      %d/min\nsecret    %s\n",
+		record.ID, record.Name, strings.Join(record.Scopes, ","),
+		record.MaxClassification, record.RateLimitPerMinute, secret)
 	fmt.Fprintln(os.Stderr, "Store the secret now. It cannot be retrieved again.")
 	return nil
 }
