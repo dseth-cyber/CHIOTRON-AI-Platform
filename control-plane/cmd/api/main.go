@@ -26,6 +26,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/chiotron/ai-control-plane/internal/agent"
 	"github.com/chiotron/ai-control-plane/internal/assistant"
 	"github.com/chiotron/ai-control-plane/internal/audit"
 	"github.com/chiotron/ai-control-plane/internal/auth"
@@ -41,6 +42,7 @@ import (
 	"github.com/chiotron/ai-control-plane/internal/storage"
 	"github.com/chiotron/ai-control-plane/internal/store"
 	"github.com/chiotron/ai-control-plane/internal/telemetry"
+	"github.com/chiotron/ai-control-plane/internal/tool"
 )
 
 // version is stamped at build time with -ldflags "-X main.version=...".
@@ -114,6 +116,12 @@ func run() error {
 		return err
 	}
 
+	limiter := ratelimit.New(redisClient)
+	agentDeps, err := buildAgent(ctx, cfg, pool, compute, knowledgeDeps, limiter, log)
+	if err != nil {
+		return err
+	}
+
 	keys := auth.NewStore(pool)
 	handler := httpapi.NewRouter(httpapi.Deps{
 		Config:        cfg,
@@ -122,11 +130,12 @@ func run() error {
 		Compute:       compute,
 		Auth:          keys,
 		Keys:          keys,
-		Limiter:       ratelimit.New(redisClient),
+		Limiter:       limiter,
 		Audit:         audit.NewRecorder(pool, log),
 		Assistants:    assistant.NewStore(pool),
 		Conversations: conversation.NewStore(pool, cfg.PersistPrompts),
 		Knowledge:     knowledgeDeps,
+		Agent:         agentDeps,
 		Checkers: []httpapi.Checker{
 			httpapi.CheckerFunc{DependencyName: "postgres", Probe: pool.Ping},
 			httpapi.CheckerFunc{DependencyName: "redis", Probe: func(ctx context.Context) error {
@@ -210,6 +219,72 @@ func buildKnowledge(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, 
 		Storage:   objects,
 		Embedder:  embedder,
 		Policy:    policy,
+	}, nil
+}
+
+// buildAgent wires the tool registry and the orchestrator.
+//
+// The registry is read from the database at startup: a registration naming an
+// implementation this build does not have is refused here, where an operator can
+// see it, rather than on somebody's first question.
+func buildAgent(ctx context.Context, cfg config.Config, pool *pgxpool.Pool,
+	compute *provider.Registry, knowledgeDeps httpapi.Knowledge,
+	limiter *ratelimit.Limiter, log *slog.Logger) (httpapi.Agent, error) {
+
+	policy, err := agent.NewPolicy(cfg.AgentMaxSteps, cfg.AgentTopK, cfg.AgentMinScore, cfg.AgentConflictMargin)
+	if err != nil {
+		return httpapi.Agent{}, err
+	}
+
+	runs := agent.NewStore(pool, cfg.PersistPrompts)
+	registrations, err := runs.Tools(ctx)
+	if err != nil {
+		return httpapi.Agent{}, err
+	}
+
+	implementations := []tool.Implementation{
+		tool.KnowledgeSearch{
+			Documents: knowledgeDeps.Documents,
+			Embedder:  knowledgeDeps.Embedder,
+			Policy:    knowledgeDeps.Policy,
+			TopK:      cfg.AgentTopK,
+		},
+		tool.ComputeHealth{Providers: func(ctx context.Context) (map[string]string, error) {
+			statuses := make(map[string]string)
+			for _, llm := range compute.Providers() {
+				if err := llm.Health(ctx); err != nil {
+					statuses[llm.Name()] = "unavailable"
+					continue
+				}
+				statuses[llm.Name()] = "available"
+			}
+			return statuses, nil
+		}},
+		tool.PlatformTime{},
+	}
+
+	// Tool arguments are derived from user content, so they follow the same
+	// prompt-logging policy as conversations.
+	registry, err := tool.NewRegistry(registrations, implementations, limiter, runs, cfg.PersistPrompts)
+	if err != nil {
+		return httpapi.Agent{}, err
+	}
+
+	log.Info("agent ready",
+		"tools", len(registrations), "maxSteps", policy.MaxSteps, "topK", policy.TopK,
+		"minScore", policy.MinScore, "conflictMargin", policy.ConflictMargin)
+
+	return httpapi.Agent{
+		Orchestrator: &agent.Orchestrator{
+			Retriever: knowledgeDeps.Documents,
+			Embedder:  knowledgeDeps.Embedder,
+			Completer: compute,
+			Tools:     registry,
+			Policy:    policy,
+			Classes:   knowledgeDeps.Policy,
+		},
+		Runs:  runs,
+		Tools: registry,
 	}, nil
 }
 

@@ -43,6 +43,9 @@ Ollama and model credentials are deliberately never exposed to browsers.
 | `GET /api/v1/documents/{id}` | One document. Needs `knowledge:read`. |
 | `DELETE /api/v1/documents/{id}` | Withdraw a document and its chunks. Needs `knowledge:write`. |
 | `POST /api/v1/knowledge/search` | Permission-filtered hybrid retrieval. Needs `knowledge:read`. |
+| `GET /api/v1/tools` | Tools the caller may actually call. Needs `tools:read`. |
+| `POST /api/v1/agent/answer` | Grounded answer with citations and a run trace. Needs `agent:run`. |
+| `GET /api/v1/agent/runs/{id}` | The trace for one run. Needs `agent:run`. |
 | `GET/POST /api/v1/admin/api-keys` | List and mint API keys. Needs `admin:keys`. |
 | `POST /api/v1/admin/assistants` | Create an assistant. Needs `admin:assistants`. |
 | `POST /api/v1/admin/api-keys/{id}/revoke` | Revoke a key. Needs `admin:keys`. |
@@ -156,6 +159,23 @@ docker compose run --rm --no-deps api apikey create -name analyst `
 Embeddings come from `nomic-embed-text` at 768 dimensions, which the `chunks` table pins as `vector(768)`. Changing the embedding model changes that width, so it needs a migration and a re-embedding pass rather than a configuration flip — `EMBEDDING_DIMENSIONS` is validated against the schema at startup to make that explicit.
 
 Only `text/plain` and `text/markdown` are accepted today. PDF and office formats need a parsing dependency and arrive with the connector work; rejecting them is better than storing bytes nothing can read.
+
+## Agentic retrieval
+
+`POST /api/v1/agent/answer` plans, retrieves, optionally calls tools, then synthesises an answer with citations. Every run is recorded step by step, so an answer can be explained afterwards: which searches ran, what they scored, which tools were called and which passages the answer was built from. `GET /api/v1/agent/runs/{id}` returns that trace.
+
+**The planner is deterministic policy, not a model choosing its own next move.** A rule can be read, tested and audited; asking a 0.5B model to plan its own retrieval would make every answer's shape unexplainable. The rules are:
+
+- Retrieval is assistant policy — `off`, `auto` or `always`. In `auto` a question of fewer than three words is not treated as a corpus query.
+- A round that scores below `AGENT_MIN_SCORE` triggers one follow-up query anchored on the strongest document's title, which pulls in its neighbouring chunks. With nothing to anchor on, the agent stops rather than repeating the same search.
+- Evidence still below the threshold is **discarded**, not passed along weakly. An assistant set to `always` is then told to say the knowledge base does not cover the question instead of answering from the model alone.
+- `AGENT_MAX_STEPS` counts investigation only. The plan record and the synthesis do not consume it, and a skipped step costs nothing.
+
+**Grounding is measured, not assumed.** The response reports `citations`, `citedIndices` and `grounded`: a model can be handed passages and ignore them, and the platform says so rather than implying the answer came from the corpus.
+
+**Conflict is flagged, not resolved.** When the two strongest passages come from different documents of comparable *semantic* relevance, the run is marked `conflicted` and the prompt asks for both positions. The comparison uses cosine similarity rather than the fused score on purpose: RRF scores compress by construction — the top results differ by fractions of 1/61 — so a relative margin on them fires almost every time and says nothing about whether the documents are on the same subject.
+
+**Tools are a controlled registry.** Each declares the scope a caller must hold, is rate limited per key *and* per tool through the same Redis counter as HTTP requests, and writes a `tool_calls` row on every path including denied and throttled. `knowledge.search` derives the caller's clearance inside the tool: an agent must not be able to widen the access of the person it acts for. The shipped tools are `knowledge.search`, `compute.health` and `platform.time`.
 
 ## Observability
 

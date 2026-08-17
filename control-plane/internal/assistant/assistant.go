@@ -19,18 +19,24 @@ import (
 var ErrNotFound = errors.New("assistant not found")
 
 type Assistant struct {
-	ID           string    `json:"id"`
-	Slug         string    `json:"slug"`
-	Name         string    `json:"name"`
-	Description  string    `json:"description"`
-	Instructions string    `json:"instructions,omitempty"`
-	LogicalModel string    `json:"logicalModel"`
-	Temperature  *float64  `json:"temperature,omitempty"`
-	MaxTokens    *int      `json:"maxTokens,omitempty"`
-	CompanyID    string    `json:"companyId,omitempty"`
-	Enabled      bool      `json:"enabled"`
-	CreatedAt    time.Time `json:"createdAt"`
-	UpdatedAt    time.Time `json:"updatedAt"`
+	ID           string   `json:"id"`
+	Slug         string   `json:"slug"`
+	Name         string   `json:"name"`
+	Description  string   `json:"description"`
+	Instructions string   `json:"instructions,omitempty"`
+	LogicalModel string   `json:"logicalModel"`
+	Temperature  *float64 `json:"temperature,omitempty"`
+	MaxTokens    *int     `json:"maxTokens,omitempty"`
+	CompanyID    string   `json:"companyId,omitempty"`
+	Enabled      bool     `json:"enabled"`
+
+	// Retrieval is assistant policy: off, auto or always. MaxSteps bounds the
+	// agent's plan for this assistant, within the platform budget.
+	Retrieval string `json:"retrieval"`
+	MaxSteps  int    `json:"maxSteps"`
+
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
 }
 
 // Public strips assistant policy from a record. Instructions are configuration
@@ -49,6 +55,8 @@ type CreateParams struct {
 	Temperature  *float64
 	MaxTokens    *int
 	CompanyID    string
+	Retrieval    string
+	MaxSteps     int
 	CreatedBy    string
 }
 
@@ -59,7 +67,8 @@ type Store struct {
 func NewStore(pool *pgxpool.Pool) *Store { return &Store{pool: pool} }
 
 const columns = `id::text, slug, name, description, instructions, logical_model,
-	temperature, max_tokens, coalesce(company_id, ''), enabled, created_at, updated_at`
+	temperature, max_tokens, coalesce(company_id, ''), enabled, retrieval, max_steps,
+	created_at, updated_at`
 
 // List returns the assistants a caller may use.
 //
@@ -128,13 +137,23 @@ func (s *Store) Create(ctx context.Context, params CreateParams) (Assistant, err
 		return Assistant{}, fmt.Errorf("assistant logicalModel is required")
 	}
 
+	retrieval := params.Retrieval
+	if retrieval == "" {
+		// The column default carries the platform's own baseline.
+		retrieval = "auto"
+	}
+	maxSteps := params.MaxSteps
+	if maxSteps <= 0 {
+		maxSteps = 3
+	}
+
 	row := s.pool.QueryRow(ctx, `
 		INSERT INTO assistants (slug, name, description, instructions, logical_model,
-		                        temperature, max_tokens, company_id, created_by)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, nullif($8, ''), $9)
+		                        temperature, max_tokens, company_id, retrieval, max_steps, created_by)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, nullif($8, ''), $9, $10, $11)
 		RETURNING `+columns,
 		params.Slug, params.Name, params.Description, params.Instructions, params.LogicalModel,
-		params.Temperature, params.MaxTokens, params.CompanyID, params.CreatedBy)
+		params.Temperature, params.MaxTokens, params.CompanyID, retrieval, maxSteps, params.CreatedBy)
 
 	record, err := scan(row)
 	if err != nil {
@@ -149,6 +168,6 @@ func scan(row scannable) (Assistant, error) {
 	var record Assistant
 	err := row.Scan(&record.ID, &record.Slug, &record.Name, &record.Description, &record.Instructions,
 		&record.LogicalModel, &record.Temperature, &record.MaxTokens, &record.CompanyID,
-		&record.Enabled, &record.CreatedAt, &record.UpdatedAt)
+		&record.Enabled, &record.Retrieval, &record.MaxSteps, &record.CreatedAt, &record.UpdatedAt)
 	return record, err
 }

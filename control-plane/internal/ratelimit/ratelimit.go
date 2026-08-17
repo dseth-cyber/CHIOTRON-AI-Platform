@@ -72,3 +72,14 @@ func (l *Limiter) Allow(ctx context.Context, subject string, limit int) (Decisio
 		ResetAt:   resetAt,
 	}, nil
 }
+
+// Permit is the boolean form the tool registry needs. Tool limits and request
+// limits share this counter, so a tool cannot be used to bypass a key's ceiling
+// by going through a different code path.
+func (l *Limiter) Permit(ctx context.Context, subject string, limit int) (bool, error) {
+	decision, err := l.Allow(ctx, subject, limit)
+	if err != nil {
+		return false, err
+	}
+	return decision.Allowed, nil
+}

@@ -40,6 +40,8 @@ const (
 	ScopeChatCompletion  = "chat:completions"
 	ScopeKnowledgeRead   = "knowledge:read"
 	ScopeKnowledgeWrite  = "knowledge:write"
+	ScopeToolsRead       = "tools:read"
+	ScopeAgentRun        = "agent:run"
 	ScopeAdminKeys       = "admin:keys"
 	ScopeAdminAssistants = "admin:assistants"
 )
@@ -48,6 +50,7 @@ const (
 var KnownScopes = []string{
 	ScopeModelsRead, ScopeAssistantsRead, ScopeChatCompletion,
 	ScopeKnowledgeRead, ScopeKnowledgeWrite,
+	ScopeToolsRead, ScopeAgentRun,
 	ScopeAdminKeys, ScopeAdminAssistants,
 }
 

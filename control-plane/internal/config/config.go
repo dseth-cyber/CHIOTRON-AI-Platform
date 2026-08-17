@@ -52,6 +52,13 @@ type Config struct {
 	IngestionInterval    time.Duration
 	IngestionBatch       int
 
+	// Agent planner policy. Retrieval depth and the score a round must beat are
+	// tuning, not business logic, so both are configuration.
+	AgentMaxSteps       int
+	AgentTopK           int
+	AgentMinScore       float64
+	AgentConflictMargin float64
+
 	// Telemetry. VM4 emits OpenTelemetry to the existing Tempo/Loki stack and
 	// is scraped by the existing Prometheus (ARCHITECTURE-v1 section 9); the
 	// platform does not run a monitoring stack of its own.
@@ -183,6 +190,26 @@ func Load(getenv func(string) string, version string) (Config, error) {
 		fail("INGESTION_BATCH must be greater than zero, got %d", cfg.IngestionBatch)
 	}
 
+	if cfg.AgentMaxSteps, err = intVar(getenv, "AGENT_MAX_STEPS", 3); err != nil {
+		fail("%v", err)
+	} else if cfg.AgentMaxSteps < 1 {
+		fail("AGENT_MAX_STEPS must be at least 1, got %d", cfg.AgentMaxSteps)
+	}
+	if cfg.AgentTopK, err = intVar(getenv, "AGENT_TOP_K", 5); err != nil {
+		fail("%v", err)
+	} else if cfg.AgentTopK < 1 {
+		fail("AGENT_TOP_K must be at least 1, got %d", cfg.AgentTopK)
+	}
+	// Reciprocal rank fusion scores are small by construction: a single top-ranked
+	// hit contributes 1/(60+1). The default is deliberately just under that, so a
+	// lone strong match counts as evidence and nothing else does.
+	if cfg.AgentMinScore, err = floatVar(getenv, "AGENT_MIN_SCORE", 0.016); err != nil {
+		fail("%v", err)
+	}
+	if cfg.AgentConflictMargin, err = ratioVar(getenv, "AGENT_CONFLICT_MARGIN", 0.15); err != nil {
+		fail("%v", err)
+	}
+
 	if len(problems) > 0 {
 		return Config{}, fmt.Errorf("invalid configuration:\n  - %s", strings.Join(problems, "\n  - "))
 	}
@@ -231,6 +258,23 @@ func boolVar(getenv func(string) string, key string, fallback bool) (bool, error
 	value, err := strconv.ParseBool(raw)
 	if err != nil {
 		return false, fmt.Errorf("%s must be true or false, got %q", key, raw)
+	}
+	return value, nil
+}
+
+// floatVar reads a non-negative number. Unlike ratioVar it is not capped at 1,
+// because a fused relevance score has no natural upper bound.
+func floatVar(getenv func(string) string, key string, fallback float64) (float64, error) {
+	raw := strings.TrimSpace(getenv(key))
+	if raw == "" {
+		return fallback, nil
+	}
+	value, err := strconv.ParseFloat(raw, 64)
+	if err != nil {
+		return 0, fmt.Errorf("%s must be a number, got %q", key, raw)
+	}
+	if value < 0 {
+		return 0, fmt.Errorf("%s cannot be negative, got %q", key, raw)
 	}
 	return value, nil
 }

@@ -46,6 +46,7 @@ type Deps struct {
 	Assistants    AssistantCatalogue
 	Conversations ConversationStore
 	Knowledge     Knowledge
+	Agent         Agent
 }
 
 // authenticated reports whether the authenticated routes can be served. They
@@ -144,6 +145,7 @@ func NewRouter(d Deps) http.Handler {
 	registerConversations(mux, d)
 	registerChat(mux, d)
 	registerKnowledge(mux, d)
+	registerAgent(mux, d)
 	registerAdmin(mux, d)
 
 	// Ordering matters, outermost first:
