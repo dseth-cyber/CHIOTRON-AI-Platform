@@ -43,6 +43,7 @@ Ollama and model credentials are deliberately never exposed to browsers.
 | `GET /api/v1/documents/{id}` | One document. Needs `knowledge:read`. |
 | `DELETE /api/v1/documents/{id}` | Withdraw a document and its chunks. Needs `knowledge:write`. |
 | `POST /api/v1/knowledge/search` | Permission-filtered hybrid retrieval. Needs `knowledge:read`. |
+| `GET /api/v1/graph/neighbours` | Relationship traversal from a term. Needs `knowledge:read`. |
 | `GET /api/v1/tools` | Tools the caller may actually call. Needs `tools:read`. |
 | `POST /api/v1/agent/answer` | Grounded answer with citations and a run trace. Needs `agent:run`. |
 | `GET /api/v1/agent/runs/{id}` | The trace for one run. Needs `agent:run`. |
@@ -159,6 +160,27 @@ docker compose run --rm --no-deps api apikey create -name analyst `
 Embeddings come from `nomic-embed-text` at 768 dimensions, which the `chunks` table pins as `vector(768)`. Changing the embedding model changes that width, so it needs a migration and a re-embedding pass rather than a configuration flip — `EMBEDDING_DIMENSIONS` is validated against the schema at startup to make that explicit.
 
 Only `text/plain` and `text/markdown` are accepted today. PDF and office formats need a parsing dependency and arrive with the connector work; rejecting them is better than storing bytes nothing can read.
+
+## Relationship graph
+
+Ingestion projects each document into `graph_nodes`, `graph_edges` and `graph_mentions` — AI-owned tables, so GraphRAG needs no infrastructure decision before there is a graph worth running on (ARCHITECTURE-v1 section 6). Everything above `internal/graph` depends on the `Provider` interface, which is what makes Neo4j an adapter change rather than an orchestration change.
+
+**Extraction is deterministic, not model-driven.** The same document always produces the same graph, which is what makes an edge weight meaningful and a traversal reproducible. It finds title-case names and short all-caps identifiers (`VM4`, `S3`), joins adjacent words into one name, and allows an acronym *inside* a name — `Enterprise AI Platform` is one entity — but never at the end, so `Control Plane VM4` stays two things. Casing variants collapse: `CONTROL PLANE` and `Control Plane` are one node.
+
+Edges record `mentioned_in` (entity → document) and `co_occurs_with` (entity ↔ entity in the same chunk). The second is deliberately untyped: naming a relationship needs a capable model, and inventing a label would be worse than admitting the edge only says the two appear together. Co-occurrence is per chunk, not per document — two entities in one passage are plausibly related, two in a fifty-page document are not.
+
+**Access is filtered at every hop, not just the seed.** A readable node must not become a bridge to an unreadable one. Verified with two documents sharing one entity:
+
+| Clearance | Reached from `Control Plane` |
+|---|---|
+| `restricted` | Control Plane, Gateway Service, **Project Falcon**, both documents |
+| `internal` | Control Plane, Gateway Service, Gateway architecture only |
+
+A node several documents mention keeps the **least** sensitive of their classifications: knowing an entity exists is only as sensitive as the least restricted document that says so, and taking the first writer's level would hide an entity from readers whose own documents mention it. Edges keep their own document's level, which is what actually stops the walk.
+
+Edges are stored per document, so re-ingesting replaces a contribution instead of doubling every weight, and withdrawing a document removes exactly what it added — including any node left with nothing evidencing it. `mention_count` is derived from the mention rows rather than maintained as a counter, so it cannot drift from its evidence.
+
+Both `GRAPH_DEPTH` and `GRAPH_MAX_NODES` exist because either alone is insufficient: depth without a node cap can still fan out to the whole graph. The configured depth is a ceiling a caller may lower but not raise.
 
 ## Agentic retrieval
 

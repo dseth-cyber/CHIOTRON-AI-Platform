@@ -9,13 +9,15 @@ import (
 )
 
 type stubImplementation struct {
-	kind   string
-	result Result
-	err    error
-	calls  int
+	kind    string
+	primary string
+	result  Result
+	err     error
+	calls   int
 }
 
-func (s *stubImplementation) Kind() string { return s.kind }
+func (s *stubImplementation) Kind() string            { return s.kind }
+func (s *stubImplementation) PrimaryArgument() string { return s.primary }
 func (s *stubImplementation) Describe() map[string]string {
 	return map[string]string{"query": "string"}
 }
@@ -226,6 +228,40 @@ func TestAvailableFiltersByScopeAndCompany(t *testing.T) {
 	withCompany := auth.Identity{KeyID: "k", Scopes: []string{"models:read"}, CompanyID: "acme"}
 	if got := registry.Available(withCompany); len(got) != 2 {
 		t.Errorf("available for acme = %+v, want the platform and the company tool", got)
+	}
+}
+
+// An orchestrator cannot know each tool's parameter names, and guessing one name
+// for all of them silently fails against the rest.
+func TestArgumentsForUsesTheToolsOwnParameterName(t *testing.T) {
+	implementation := &stubImplementation{kind: "demo", primary: "term"}
+	registry := testRegistry(t, &stubLimiter{allow: true}, &stubRecorder{}, implementation)
+
+	arguments := registry.ArgumentsFor("demo.tool", "what is related to keys")
+	if arguments["term"] != "what is related to keys" {
+		t.Errorf("arguments = %v, want the question under the declared name", arguments)
+	}
+	if _, wrong := arguments["query"]; wrong {
+		t.Errorf("arguments = %v, want no assumed parameter name", arguments)
+	}
+}
+
+// A tool that takes no arguments must be called with none, not with a question it
+// would reject.
+func TestArgumentsForOmitsArgumentsWhenToolTakesNone(t *testing.T) {
+	implementation := &stubImplementation{kind: "demo", primary: ""}
+	registry := testRegistry(t, &stubLimiter{allow: true}, &stubRecorder{}, implementation)
+
+	if arguments := registry.ArgumentsFor("demo.tool", "anything"); len(arguments) != 0 {
+		t.Errorf("arguments = %v, want none", arguments)
+	}
+}
+
+func TestArgumentsForUnknownToolIsEmpty(t *testing.T) {
+	registry := testRegistry(t, &stubLimiter{allow: true}, &stubRecorder{}, &stubImplementation{kind: "demo"})
+
+	if arguments := registry.ArgumentsFor("nope", "anything"); len(arguments) != 0 {
+		t.Errorf("arguments = %v, want none for an unknown tool", arguments)
 	}
 }
 

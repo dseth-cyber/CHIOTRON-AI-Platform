@@ -59,6 +59,11 @@ type Config struct {
 	AgentMinScore       float64
 	AgentConflictMargin float64
 
+	// Graph traversal bounds. Both exist because either alone is insufficient:
+	// depth without a node cap can still fan out to the whole graph.
+	GraphDepth    int
+	GraphMaxNodes int
+
 	// Telemetry. VM4 emits OpenTelemetry to the existing Tempo/Loki stack and
 	// is scraped by the existing Prometheus (ARCHITECTURE-v1 section 9); the
 	// platform does not run a monitoring stack of its own.
@@ -208,6 +213,16 @@ func Load(getenv func(string) string, version string) (Config, error) {
 	}
 	if cfg.AgentConflictMargin, err = ratioVar(getenv, "AGENT_CONFLICT_MARGIN", 0.15); err != nil {
 		fail("%v", err)
+	}
+	if cfg.GraphDepth, err = intVar(getenv, "GRAPH_DEPTH", 2); err != nil {
+		fail("%v", err)
+	} else if cfg.GraphDepth < 1 {
+		fail("GRAPH_DEPTH must be at least 1, got %d", cfg.GraphDepth)
+	}
+	if cfg.GraphMaxNodes, err = intVar(getenv, "GRAPH_MAX_NODES", 60); err != nil {
+		fail("%v", err)
+	} else if cfg.GraphMaxNodes < 1 {
+		fail("GRAPH_MAX_NODES must be at least 1, got %d", cfg.GraphMaxNodes)
 	}
 
 	if len(problems) > 0 {

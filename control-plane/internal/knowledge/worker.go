@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/chiotron/ai-control-plane/internal/graph"
 	"github.com/chiotron/ai-control-plane/internal/provider"
 	"github.com/chiotron/ai-control-plane/internal/storage"
 )
@@ -21,10 +22,18 @@ const embedBatch = 16
 // It runs in-process rather than as a separate deployable. Ingestion is not on a
 // user's request path, and splitting it out is a scaling decision that belongs
 // with the Kafka work rather than something to guess at now.
+// Projector receives a document's graph contribution. It is an interface so the
+// worker depends on the GraphProvider contract rather than on where the graph
+// lives (ARCHITECTURE-v1 section 6).
+type Projector interface {
+	Project(ctx context.Context, documentID string, projection graph.Projection) error
+}
+
 type Worker struct {
 	store    *Store
 	storage  storage.Provider
 	embedder provider.EmbeddingProvider
+	graph    Projector
 	plan     ChunkPlan
 	log      *slog.Logger
 	interval time.Duration
@@ -32,12 +41,12 @@ type Worker struct {
 }
 
 func NewWorker(store *Store, objects storage.Provider, embedder provider.EmbeddingProvider,
-	plan ChunkPlan, interval time.Duration, batch int, log *slog.Logger) *Worker {
+	projector Projector, plan ChunkPlan, interval time.Duration, batch int, log *slog.Logger) *Worker {
 	if batch <= 0 {
 		batch = 4
 	}
 	return &Worker{
-		store: store, storage: objects, embedder: embedder, plan: plan,
+		store: store, storage: objects, embedder: embedder, graph: projector, plan: plan,
 		log: log, interval: interval, batch: batch,
 	}
 }
@@ -133,8 +142,27 @@ func (w *Worker) ingest(ctx context.Context, document Document) error {
 		return err
 	}
 
+	// The graph is a projection of the corpus, so a failure here leaves the
+	// document searchable but not traversable. That is a degraded feature, not a
+	// failed ingestion, and re-running the projection later repairs it.
+	projected := 0
+	if w.graph != nil {
+		projection := graph.Extract(graph.Source{
+			DocumentID:     document.ID,
+			Title:          document.Title,
+			Classification: document.Classification,
+			CompanyID:      document.CompanyID,
+			Department:     document.Department,
+		}, chunks)
+		if err := w.graph.Project(ctx, document.ID, projection); err != nil {
+			w.log.Error("project document graph", "documentId", document.ID, "error", err)
+		} else {
+			projected = len(projection.Nodes)
+		}
+	}
+
 	w.log.Info("document ingested",
-		"documentId", document.ID, "chunks", len(chunks),
+		"documentId", document.ID, "chunks", len(chunks), "graphNodes", projected,
 		"classification", document.Classification, "company", document.CompanyID)
 	return nil
 }

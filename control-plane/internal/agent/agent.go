@@ -256,8 +256,10 @@ func (o *Orchestrator) runTools(ctx context.Context, request Request, steps *[]S
 			break
 		}
 		callStart := time.Now()
+		// The registry maps the question onto whatever argument the tool declares.
+		// Guessing one name for every tool silently failed against the rest.
 		result, err := o.Tools.Invoke(ctx, "", slug, tool.Invocation{
-			Caller: request.Caller, Arguments: map[string]any{"query": request.Question},
+			Caller: request.Caller, Arguments: o.Tools.ArgumentsFor(slug, request.Question),
 		})
 		if err != nil {
 			addStep(StepTool, slug+": "+err.Error(), OutcomeFailure, map[string]any{"tool": slug}, time.Since(callStart))

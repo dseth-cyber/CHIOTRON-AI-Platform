@@ -61,6 +61,11 @@ type Implementation interface {
 	Kind() string
 	// Describe returns the argument contract, for a planner or a client to read.
 	Describe() map[string]string
+	// PrimaryArgument names the argument a caller's question maps onto, or the
+	// empty string for a tool that takes none. Without it a caller has to know
+	// each tool's parameter name, and an orchestrator guessing one name for all of
+	// them silently fails against the rest.
+	PrimaryArgument() string
 	Invoke(ctx context.Context, call Invocation) (Result, error)
 }
 
@@ -162,6 +167,20 @@ func (r *Registry) Describe(caller auth.Identity, slug string) (map[string]strin
 		return nil, fmt.Errorf("%w: %q", ErrNotPermitted, slug)
 	}
 	return r.implementations[registration.Kind].Describe(), nil
+}
+
+// ArgumentsFor maps a question onto whatever argument the tool actually declares,
+// so an orchestrator does not have to know each tool's parameter names.
+func (r *Registry) ArgumentsFor(slug, question string) map[string]any {
+	registration, ok := r.registrations[slug]
+	if !ok {
+		return map[string]any{}
+	}
+	primary := r.implementations[registration.Kind].PrimaryArgument()
+	if primary == "" {
+		return map[string]any{}
+	}
+	return map[string]any{primary: question}
 }
 
 func (r *Registry) permitted(caller auth.Identity, registration Registration) bool {

@@ -32,6 +32,7 @@ import (
 	"github.com/chiotron/ai-control-plane/internal/auth"
 	"github.com/chiotron/ai-control-plane/internal/config"
 	"github.com/chiotron/ai-control-plane/internal/conversation"
+	"github.com/chiotron/ai-control-plane/internal/graph"
 	"github.com/chiotron/ai-control-plane/internal/httpapi"
 	"github.com/chiotron/ai-control-plane/internal/knowledge"
 	"github.com/chiotron/ai-control-plane/internal/migrate"
@@ -200,17 +201,24 @@ func buildKnowledge(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, 
 		return httpapi.Knowledge{}, err
 	}
 
+	traversal, err := graph.NewTraversal(cfg.GraphDepth, cfg.GraphMaxNodes, nil)
+	if err != nil {
+		return httpapi.Knowledge{}, err
+	}
+
 	embedder := ollama.NewEmbedder(cfg.OllamaBaseURL, cfg.EmbeddingModel, cfg.EmbeddingDimensions, cfg.ComputeTimeout)
 	documents := knowledge.NewStore(pool)
+	relationships := graph.NewPostgres(pool, policy.Levels())
 
 	// Ingestion never blocks startup: the compute plane may be down, and
 	// documents simply wait as pending until it returns.
-	worker := knowledge.NewWorker(documents, objects, embedder, plan,
+	worker := knowledge.NewWorker(documents, objects, embedder, relationships, plan,
 		cfg.IngestionInterval, cfg.IngestionBatch, log)
 	go worker.Run(ctx)
 
 	log.Info("knowledge platform ready",
 		"storage", objects.Name(), "root", cfg.StorageRoot,
+		"graph", relationships.Name(), "graphDepth", traversal.Depth, "graphMaxNodes", traversal.MaxNodes,
 		"classifications", policy.Levels(),
 		"chunkSize", plan.Size, "chunkOverlap", plan.Overlap)
 
@@ -219,6 +227,8 @@ func buildKnowledge(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, 
 		Storage:   objects,
 		Embedder:  embedder,
 		Policy:    policy,
+		Graph:     relationships,
+		Traversal: traversal,
 	}, nil
 }
 
@@ -261,6 +271,11 @@ func buildAgent(ctx context.Context, cfg config.Config, pool *pgxpool.Pool,
 			return statuses, nil
 		}},
 		tool.PlatformTime{},
+		tool.GraphNeighbours{
+			Graph:     knowledgeDeps.Graph,
+			Policy:    knowledgeDeps.Policy,
+			Traversal: knowledgeDeps.Traversal,
+		},
 	}
 
 	// Tool arguments are derived from user content, so they follow the same

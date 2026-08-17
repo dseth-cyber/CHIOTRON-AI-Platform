@@ -10,6 +10,7 @@ import (
 
 	"github.com/chiotron/ai-control-plane/internal/audit"
 	"github.com/chiotron/ai-control-plane/internal/auth"
+	"github.com/chiotron/ai-control-plane/internal/graph"
 	"github.com/chiotron/ai-control-plane/internal/knowledge"
 	"github.com/chiotron/ai-control-plane/internal/provider"
 	"github.com/chiotron/ai-control-plane/internal/storage"
@@ -25,12 +26,22 @@ type DocumentStore interface {
 	Stats(ctx context.Context, access knowledge.Access) (map[string]int, error)
 }
 
+// GraphStore is the traversal surface the graph routes need.
+type GraphStore interface {
+	Search(ctx context.Context, term string, access graph.Access, limit int) ([]graph.Node, error)
+	Neighbours(ctx context.Context, seeds []string, traversal graph.Traversal, access graph.Access) (graph.Subgraph, error)
+	Forget(ctx context.Context, documentID string) error
+	Stats(ctx context.Context, access graph.Access) (graph.Stats, error)
+}
+
 // Knowledge bundles everything the document routes need.
 type Knowledge struct {
 	Documents DocumentStore
 	Storage   storage.Provider
 	Embedder  provider.EmbeddingProvider
 	Policy    knowledge.Policy
+	Graph     GraphStore
+	Traversal graph.Traversal
 }
 
 type uploadBody struct {
@@ -254,6 +265,13 @@ func registerKnowledge(mux *http.ServeMux, d Deps) {
 		if err := k.Storage.Delete(r.Context(), document.StorageKey()); err != nil {
 			d.Log.Error("delete stored bytes", "documentId", document.ID, "error", err)
 		}
+		// A withdrawn document must stop answering through the graph too, or its
+		// relationships would outlive the text that evidenced them.
+		if k.Graph != nil {
+			if err := k.Graph.Forget(r.Context(), document.ID); err != nil {
+				d.Log.Error("forget document graph", "documentId", document.ID, "error", err)
+			}
+		}
 
 		d.Audit.Record(r.Context(), audit.Event{
 			ActorID: caller.KeyID, APIKeyID: caller.KeyID, CompanyID: caller.CompanyID,
@@ -316,6 +334,83 @@ func registerKnowledge(mux *http.ServeMux, d Deps) {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"hits":                    hits,
 			"readableClassifications": access.Classifications,
+		})
+	}))
+
+	if k.Graph == nil {
+		return
+	}
+	// Traversal is read-only over the same corpus, so it needs the same scope as
+	// search rather than one of its own.
+	mux.HandleFunc("GET /api/v1/graph/neighbours", d.guard(auth.ScopeKnowledgeRead, func(w http.ResponseWriter, r *http.Request) {
+		caller, _ := auth.IdentityFrom(r.Context())
+
+		term := strings.TrimSpace(r.URL.Query().Get("term"))
+		if term == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "term is required"})
+			return
+		}
+		depth := k.Traversal.Depth
+		if raw := r.URL.Query().Get("depth"); raw != "" {
+			parsed, err := strconv.Atoi(raw)
+			if err != nil || parsed < 1 {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "depth must be a positive integer"})
+				return
+			}
+			// The configured depth is a ceiling, not a default a caller may raise.
+			depth = min(parsed, k.Traversal.Depth)
+		}
+
+		accessSet, err := k.access(caller)
+		if err != nil {
+			d.writeKnowledgeError(w, err, "derive access")
+			return
+		}
+		graphAccess := graph.Access{
+			CompanyID:       accessSet.CompanyID,
+			Department:      accessSet.Department,
+			Classifications: accessSet.Classifications,
+		}
+
+		seeds, err := k.Graph.Search(r.Context(), term, graphAccess, 5)
+		if err != nil {
+			d.writeKnowledgeError(w, err, "search graph")
+			return
+		}
+		if len(seeds) == 0 {
+			writeJSON(w, http.StatusOK, map[string]any{
+				"subgraph": graph.Subgraph{}, "readableClassifications": graphAccess.Classifications,
+			})
+			return
+		}
+
+		ids := make([]string, 0, len(seeds))
+		for _, seed := range seeds {
+			ids = append(ids, seed.ID)
+		}
+		traversal, err := graph.NewTraversal(depth, k.Traversal.MaxNodes, k.Traversal.Relations)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+
+		subgraph, err := k.Graph.Neighbours(r.Context(), ids, traversal, graphAccess)
+		if err != nil {
+			d.writeKnowledgeError(w, err, "traverse graph")
+			return
+		}
+
+		d.Audit.Record(r.Context(), audit.Event{
+			ActorID: caller.KeyID, APIKeyID: caller.KeyID, CompanyID: caller.CompanyID,
+			Action: "graph.traversed", ResourceType: "knowledge",
+			// The term is user content, so only its shape is recorded.
+			Metadata: map[string]any{
+				"seeds": len(subgraph.Seeds), "nodes": len(subgraph.Nodes),
+				"edges": len(subgraph.Edges), "depth": depth, "truncated": subgraph.Truncated,
+			},
+		})
+		writeJSON(w, http.StatusOK, map[string]any{
+			"subgraph": subgraph, "readableClassifications": graphAccess.Classifications,
 		})
 	}))
 }

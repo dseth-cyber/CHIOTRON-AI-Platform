@@ -35,6 +35,8 @@ type KnowledgeSearch struct {
 
 func (KnowledgeSearch) Kind() string { return "knowledge.search" }
 
+func (KnowledgeSearch) PrimaryArgument() string { return "query" }
+
 func (KnowledgeSearch) Describe() map[string]string {
 	return map[string]string{
 		"query": "string, required. What to look for in the document corpus.",
@@ -98,6 +100,8 @@ type ComputeHealth struct {
 
 func (ComputeHealth) Kind() string { return "compute.health" }
 
+func (ComputeHealth) PrimaryArgument() string { return "" }
+
 func (ComputeHealth) Describe() map[string]string { return map[string]string{} }
 
 func (c ComputeHealth) Invoke(ctx context.Context, _ Invocation) (Result, error) {
@@ -126,6 +130,8 @@ type PlatformTime struct {
 }
 
 func (PlatformTime) Kind() string { return "platform.time" }
+
+func (PlatformTime) PrimaryArgument() string { return "" }
 
 func (PlatformTime) Describe() map[string]string { return map[string]string{} }
 
