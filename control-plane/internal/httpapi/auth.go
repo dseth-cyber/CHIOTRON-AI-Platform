@@ -33,6 +33,11 @@ type AuditRecorder interface {
 	PendingCounts(ctx context.Context) (auditRows, usageRows int, err error)
 }
 
+// anyScope marks a route that any authenticated caller may reach. It is not a
+// way to skip authorization: the credential is still validated, rate limited
+// and company checked, there is simply no further capability to require.
+const anyScope = ""
+
 // guard authenticates a request, checks one scope, enforces company scoping and
 // applies the caller's rate limit before handing over.
 //
@@ -58,7 +63,7 @@ func (d Deps) guard(scope string, next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 
-		if !identity.HasScope(scope) {
+		if scope != anyScope && !identity.HasScope(scope) {
 			d.recordDenied(r, identity, scope, "missing scope")
 			writeJSON(w, http.StatusForbidden, map[string]string{"error": "missing scope " + scope})
 			return

@@ -64,12 +64,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
 
-      # The portal has no lockfile yet, so this resolves current versions
-      # rather than pinned ones. Adding package-lock.json and switching to
-      # `npm ci` is tracked as a known gap in README.md.
       - name: Install dependencies
-        run: npm install
+        run: npm ci
+
+      - name: Type check
+        run: npm run typecheck
 
       - name: Build
         run: npm run build

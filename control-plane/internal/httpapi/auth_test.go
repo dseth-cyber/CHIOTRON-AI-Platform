@@ -205,6 +205,44 @@ func TestGuardPassesIdentityDownstream(t *testing.T) {
 	}
 }
 
+// A client must be able to discover its own capabilities without holding any
+// particular one of them.
+func TestMeReturnsCallerIdentity(t *testing.T) {
+	handler := NewRouter(Deps{
+		Config:  testConfig(),
+		Log:     quietLogger(),
+		Auth:    &fakeAuthenticator{identity: auth.Identity{KeyID: "k", Name: "portal", Scopes: []string{auth.ScopeModelsRead}, RateLimitPerMinute: 30}},
+		Limiter: allowingLimiter(),
+		Audit:   &fakeAudit{},
+	})
+
+	rec := authedGet(t, handler, "/api/v1/me")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 for any authenticated caller", rec.Code)
+	}
+	body := decode(t, rec)
+	if body["name"] != "portal" {
+		t.Errorf("name = %v, want portal", body["name"])
+	}
+	scopes := body["scopes"].([]any)
+	if len(scopes) != 1 || scopes[0] != auth.ScopeModelsRead {
+		t.Errorf("scopes = %v, want the granted scopes", scopes)
+	}
+	if body["rateLimitPerMinute"] != float64(30) {
+		t.Errorf("rateLimitPerMinute = %v, want 30", body["rateLimitPerMinute"])
+	}
+}
+
+func TestMeStillRequiresACredential(t *testing.T) {
+	router := NewRouter(Deps{
+		Config: testConfig(), Log: quietLogger(),
+		Auth: &fakeAuthenticator{identity: fullyScopedIdentity()}, Limiter: allowingLimiter(), Audit: &fakeAudit{},
+	})
+	if rec := get(t, router, "/api/v1/me", nil); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401 without a key", rec.Code)
+	}
+}
+
 // Operational endpoints stay open: probes and scrapes have no credential.
 func TestOperationalEndpointsStayPublic(t *testing.T) {
 	handler := NewRouter(Deps{

@@ -12,6 +12,7 @@ import (
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
+	"github.com/chiotron/ai-control-plane/internal/auth"
 	"github.com/chiotron/ai-control-plane/internal/config"
 	"github.com/chiotron/ai-control-plane/internal/provider"
 )
@@ -123,6 +124,17 @@ func NewRouter(d Deps) http.Handler {
 			"computeProvider": cfg.ComputeProvider,
 		})
 	})
+
+	if d.authenticated() {
+		// Lets a client discover what its own credential may do, so a UI can
+		// hide what the caller cannot use instead of probing for 403s. UI
+		// filtering stays convenience only: the backend still authorizes every
+		// action (ARCHITECTURE-v1 section 5).
+		mux.HandleFunc("GET /api/v1/me", d.guard(anyScope, func(w http.ResponseWriter, r *http.Request) {
+			identity, _ := auth.IdentityFrom(r.Context())
+			writeJSON(w, http.StatusOK, identity)
+		}))
+	}
 
 	registerCompute(mux, d)
 	registerAdmin(mux, d)

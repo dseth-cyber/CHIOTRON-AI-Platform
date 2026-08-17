@@ -31,6 +31,7 @@ Ollama and model credentials are deliberately never exposed to browsers.
 | `GET /readyz` | Readiness. Probes PostgreSQL and Redis and returns `503` with per-dependency detail when one is unavailable. |
 | `GET /metrics` | Prometheus scrape endpoint. |
 | `GET /api/v1/platform` | Platform discovery. |
+| `GET /api/v1/me` | The calling credential's own name, scopes, company and quota. Any authenticated caller. |
 | `GET /api/v1/compute/health` | Per-provider compute-plane status and loaded models. Needs `models:read`. |
 | `GET /api/v1/models` | Logical models, the route behind each one, and whether the upstream model is loaded. Needs `models:read`. |
 | `POST /api/v1/chat/completions` | Non-streaming completion. Needs `chat:completions`. |
@@ -133,7 +134,19 @@ The same checks run locally through Docker, since this development host has no G
 powershell -File scripts/check.ps1
 ```
 
-Known gaps: the portal has no `package-lock.json` (so CI resolves current versions rather than pinned ones) and no `tsconfig.json` or `vite.config.ts`, which means `npm run build` transpiles TypeScript without type checking.
+## Portal
+
+The portal is the only browser client and it talks to the Control Plane only (ARCHITECTURE-v1 section 2). It reads `GET /api/v1/platform` without a credential, so the shell renders before anyone connects; models, compute status and the chat workspace need an API key.
+
+**Connecting.** The topbar's *API key* dialog stores a key in `sessionStorage`, so it dies with the tab and is never written into the image. `GET /api/v1/me` then tells the portal what that key may do, which is what drives navigation — the Chat item is disabled without `chat:completions`. That filtering is convenience only: the backend authorizes every request regardless of what the UI chose to show.
+
+This is a development bridge. Once the Identity Service issues JWTs to the portal, the browser stops holding a platform credential; until then, connect the narrowest key that does the job and keep `admin:keys` out of the browser.
+
+**Chat.** The workspace streams over SSE, picks its model list from `/api/v1/models` (defaulting to whatever the gateway calls default, never a hard-coded model name), and shows real token counts and latency per turn. `EventSource` cannot send an `Authorization` header, so the stream is read with `fetch` and reassembled across network chunks.
+
+**Live figures.** The Developer Portal stat cards read environment, version, capabilities, model availability and compute status from the API. Only the roadmap remains local state — it is a planning artefact, not platform data.
+
+Type checking is part of the build: `npm run build` runs `tsc --noEmit` first, so a type error fails the image. Dependencies are pinned by `package-lock.json` and installed with `npm ci`.
 
 The next development phase should add identity/JWT middleware, then assistant and conversation APIs on top of the compute registry.
 
