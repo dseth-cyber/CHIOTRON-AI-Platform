@@ -145,3 +145,34 @@ func (r *Registry) Chat(ctx context.Context, logical string, req ChatRequest) (C
 	}
 	return response, route, nil
 }
+
+// ChatStream resolves a logical model and streams its response.
+//
+// A provider that cannot stream is not an error: the whole response is
+// delivered as one chunk, so a caller that asked for a stream still gets a
+// well-formed stream and does not have to know which backend served it.
+func (r *Registry) ChatStream(ctx context.Context, logical string, req ChatRequest, emit func(Chunk) error) (ChatResponse, Route, error) {
+	llm, route, err := r.Resolve(logical)
+	if err != nil {
+		return ChatResponse{}, Route{}, err
+	}
+	req.Model = route.Model
+
+	streaming, ok := llm.(StreamingLLM)
+	if !ok {
+		response, err := llm.Chat(ctx, req)
+		if err != nil {
+			return ChatResponse{}, route, err
+		}
+		if err := emit(Chunk{Content: response.Content}); err != nil {
+			return ChatResponse{}, route, err
+		}
+		return response, route, nil
+	}
+
+	response, err := streaming.ChatStream(ctx, req, emit)
+	if err != nil {
+		return ChatResponse{}, route, err
+	}
+	return response, route, nil
+}

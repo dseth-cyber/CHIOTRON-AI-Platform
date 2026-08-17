@@ -56,6 +56,11 @@ func (s *statusRecorder) WriteHeader(status int) {
 	s.ResponseWriter.WriteHeader(status)
 }
 
+// Unwrap lets http.NewResponseController reach the real ResponseWriter.
+// Without it this wrapper would hide Flush and SetWriteDeadline, and streaming
+// responses would be buffered until the handler returned.
+func (s *statusRecorder) Unwrap() http.ResponseWriter { return s.ResponseWriter }
+
 func requestLog(log *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -7,6 +7,7 @@
 package ollama
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -25,6 +26,10 @@ import (
 // maxErrorBody caps how much of an upstream error response is read into an
 // error message. Model output can be large and may contain user content.
 const maxErrorBody = 2 << 10
+
+// maxStreamLine bounds one newline-delimited chunk so a malformed upstream
+// response cannot exhaust memory.
+const maxStreamLine = 1 << 20
 
 type Client struct {
 	baseURL string
@@ -87,13 +92,23 @@ func (c *Client) Models(ctx context.Context) ([]provider.Model, error) {
 	return models, nil
 }
 
-func (c *Client) Chat(ctx context.Context, req provider.ChatRequest) (provider.ChatResponse, error) {
+// chatPayload is one Ollama /api/chat response. In streaming mode the endpoint
+// returns a sequence of these as newline-delimited JSON, with the token counts
+// carried only on the final object.
+type chatPayload struct {
+	Model      string           `json:"model"`
+	Message    provider.Message `json:"message"`
+	Done       bool             `json:"done"`
+	DoneReason string           `json:"done_reason"`
+	PromptEval int              `json:"prompt_eval_count"`
+	Eval       int              `json:"eval_count"`
+}
+
+func chatBody(req provider.ChatRequest, stream bool) map[string]any {
 	body := map[string]any{
 		"model":    req.Model,
 		"messages": req.Messages,
-		// Streaming belongs to the Gateway phase, where it ships with auth and
-		// quota enforcement.
-		"stream": false,
+		"stream":   stream,
 	}
 	options := map[string]any{}
 	if req.Temperature != nil {
@@ -105,69 +120,104 @@ func (c *Client) Chat(ctx context.Context, req provider.ChatRequest) (provider.C
 	if len(options) > 0 {
 		body["options"] = options
 	}
-
-	var payload struct {
-		Model      string           `json:"model"`
-		Message    provider.Message `json:"message"`
-		DoneReason string           `json:"done_reason"`
-		PromptEval int              `json:"prompt_eval_count"`
-		Eval       int              `json:"eval_count"`
-	}
-
-	started := time.Now()
-	if err := c.do(ctx, http.MethodPost, "/api/chat", body, &payload); err != nil {
-		return provider.ChatResponse{}, fmt.Errorf("%w: %s", provider.ErrUnavailable, err)
-	}
-
-	return provider.ChatResponse{
-		Model:        payload.Model,
-		Content:      payload.Message.Content,
-		FinishReason: payload.DoneReason,
-		Usage: provider.Usage{
-			PromptTokens:     payload.PromptEval,
-			CompletionTokens: payload.Eval,
-			TotalTokens:      payload.PromptEval + payload.Eval,
-		},
-		LatencyMs: time.Since(started).Milliseconds(),
-	}, nil
+	return body
 }
 
-func (c *Client) do(ctx context.Context, method, path string, body any, out any) error {
-	endpoint, err := url.JoinPath(c.baseURL, path)
-	if err != nil {
-		return fmt.Errorf("build %s url: %w", path, err)
+func (p chatPayload) response(content string, latency time.Duration) provider.ChatResponse {
+	return provider.ChatResponse{
+		Model:        p.Model,
+		Content:      content,
+		FinishReason: p.DoneReason,
+		Usage: provider.Usage{
+			PromptTokens:     p.PromptEval,
+			CompletionTokens: p.Eval,
+			TotalTokens:      p.PromptEval + p.Eval,
+		},
+		LatencyMs: latency.Milliseconds(),
 	}
+}
 
-	var reader io.Reader
-	if body != nil {
-		encoded, err := json.Marshal(body)
-		if err != nil {
-			return fmt.Errorf("encode %s request: %w", path, err)
-		}
-		reader = bytes.NewReader(encoded)
-	}
+func (c *Client) Chat(ctx context.Context, req provider.ChatRequest) (provider.ChatResponse, error) {
+	var payload chatPayload
 
-	request, err := http.NewRequestWithContext(ctx, method, endpoint, reader)
-	if err != nil {
-		return fmt.Errorf("build %s request: %w", path, err)
+	started := time.Now()
+	if err := c.do(ctx, http.MethodPost, "/api/chat", chatBody(req, false), &payload); err != nil {
+		return provider.ChatResponse{}, fmt.Errorf("%w: %s", provider.ErrUnavailable, err)
 	}
-	if body != nil {
-		request.Header.Set("Content-Type", "application/json")
-	}
+	return payload.response(payload.Message.Content, time.Since(started)), nil
+}
 
-	response, err := c.http.Do(request)
+// ChatStream reads Ollama's newline-delimited JSON stream and emits each
+// increment as it arrives.
+func (c *Client) ChatStream(ctx context.Context, req provider.ChatRequest, emit func(provider.Chunk) error) (provider.ChatResponse, error) {
+	started := time.Now()
+	response, err := c.post(ctx, "/api/chat", chatBody(req, true))
 	if err != nil {
-		return fmt.Errorf("call %s: %w", path, err)
+		return provider.ChatResponse{}, fmt.Errorf("%w: %s", provider.ErrUnavailable, err)
 	}
 	defer func() {
 		_, _ = io.Copy(io.Discard, response.Body)
 		_ = response.Body.Close()
 	}()
 
-	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		detail, _ := io.ReadAll(io.LimitReader(response.Body, maxErrorBody))
-		return fmt.Errorf("%s returned %s: %s", path, response.Status, strings.TrimSpace(string(detail)))
+	var content strings.Builder
+	var final chatPayload
+
+	scanner := bufio.NewScanner(response.Body)
+	// A single token is small, but a provider is free to buffer; give the
+	// scanner room rather than failing a long line.
+	scanner.Buffer(make([]byte, 0, 64<<10), maxStreamLine)
+
+	for scanner.Scan() {
+		line := bytes.TrimSpace(scanner.Bytes())
+		if len(line) == 0 {
+			continue
+		}
+
+		var payload chatPayload
+		if err := json.Unmarshal(line, &payload); err != nil {
+			return provider.ChatResponse{}, fmt.Errorf("%w: decode stream chunk: %s", provider.ErrUnavailable, err)
+		}
+
+		if payload.Message.Content != "" {
+			content.WriteString(payload.Message.Content)
+			// An emit failure means the client is gone. Stop rather than
+			// draining the rest of the upstream response.
+			if err := emit(provider.Chunk{Content: payload.Message.Content}); err != nil {
+				return provider.ChatResponse{}, err
+			}
+		}
+		if payload.Done {
+			final = payload
+			if final.Model == "" {
+				final.Model = req.Model
+			}
+			break
+		}
 	}
+	if err := scanner.Err(); err != nil {
+		return provider.ChatResponse{}, fmt.Errorf("%w: read stream: %s", provider.ErrUnavailable, err)
+	}
+	if !final.Done {
+		// The connection ended before the provider said it was finished, so the
+		// answer is truncated and must not be reported as a success.
+		return provider.ChatResponse{}, fmt.Errorf("%w: stream ended before completion", provider.ErrUnavailable)
+	}
+
+	return final.response(content.String(), time.Since(started)), nil
+}
+
+// do performs a request and decodes the whole response body.
+func (c *Client) do(ctx context.Context, method, path string, body any, out any) error {
+	response, err := c.send(ctx, method, path, body)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_, _ = io.Copy(io.Discard, response.Body)
+		_ = response.Body.Close()
+	}()
+
 	if out == nil {
 		return nil
 	}
@@ -175,4 +225,47 @@ func (c *Client) do(ctx context.Context, method, path string, body any, out any)
 		return fmt.Errorf("decode %s response: %w", path, err)
 	}
 	return nil
+}
+
+// post returns the live response so the caller can read a stream. The caller
+// owns closing the body.
+func (c *Client) post(ctx context.Context, path string, body any) (*http.Response, error) {
+	return c.send(ctx, http.MethodPost, path, body)
+}
+
+// send issues the request and fails on any non-2xx status, so callers only ever
+// see a body worth reading.
+func (c *Client) send(ctx context.Context, method, path string, body any) (*http.Response, error) {
+	endpoint, err := url.JoinPath(c.baseURL, path)
+	if err != nil {
+		return nil, fmt.Errorf("build %s url: %w", path, err)
+	}
+
+	var reader io.Reader
+	if body != nil {
+		encoded, err := json.Marshal(body)
+		if err != nil {
+			return nil, fmt.Errorf("encode %s request: %w", path, err)
+		}
+		reader = bytes.NewReader(encoded)
+	}
+
+	request, err := http.NewRequestWithContext(ctx, method, endpoint, reader)
+	if err != nil {
+		return nil, fmt.Errorf("build %s request: %w", path, err)
+	}
+	if body != nil {
+		request.Header.Set("Content-Type", "application/json")
+	}
+
+	response, err := c.http.Do(request)
+	if err != nil {
+		return nil, fmt.Errorf("call %s: %w", path, err)
+	}
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		detail, _ := io.ReadAll(io.LimitReader(response.Body, maxErrorBody))
+		_ = response.Body.Close()
+		return nil, fmt.Errorf("%s returned %s: %s", path, response.Status, strings.TrimSpace(string(detail)))
+	}
+	return response, nil
 }

@@ -83,7 +83,22 @@ The provider and model are split on the first slash, so upstream names may conta
 
 **Failure isolation is deliberate.** The compute plane is not part of `/readyz`: losing VM5 degrades model calls only and the Control Plane stays ready (ARCHITECTURE-v1 section 9). With Ollama unreachable, `/readyz` still returns `200`, `/api/v1/compute/health` reports `unavailable` with the underlying reason, `/api/v1/models` marks routes unavailable, and a chat call returns `503` — never a Control Plane `500`.
 
-Streaming is not implemented yet: `POST /api/v1/chat/completions` returns a complete response. SSE is the remaining piece of the Gateway phase.
+### Streaming
+
+Send `"stream": true` and the same endpoint answers with Server-Sent Events instead of a single JSON body:
+
+```
+data: {"content":"1"}
+data: {"content":"\n"}
+data: {"done":true,"finishReason":"stop","usage":{"promptTokens":42,"completionTokens":10,"totalTokens":52}}
+data: [DONE]
+```
+
+Token counts are only known when generation finishes, so they ride on the final frame. Usage is recorded identically in both modes.
+
+Response headers are written on the first chunk rather than up front. Until something has actually been produced a failure can still be reported with a real HTTP status — an unreachable compute plane is a `503`, not an error buried inside a `200` stream. Once the stream is established, a mid-flight failure arrives as an `event: error` frame.
+
+`StreamingLLM` is an optional part of the provider contract. A provider that cannot stream still serves a `stream: true` request: the whole response is delivered as one chunk, so callers never have to know which backend answered.
 
 ## Configuration and schema
 

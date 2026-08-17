@@ -134,6 +134,108 @@ func TestChatOmitsOptionsWhenUnset(t *testing.T) {
 	}
 }
 
+func TestChatStreamEmitsIncrementsAndAggregates(t *testing.T) {
+	var received map[string]any
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&received)
+		for _, line := range []string{
+			`{"model":"qwen2.5:0.5b","message":{"role":"assistant","content":"PO"},"done":false}`,
+			`{"model":"qwen2.5:0.5b","message":{"role":"assistant","content":"NG"},"done":false}`,
+			`{"model":"qwen2.5:0.5b","message":{"role":"assistant","content":""},"done":true,` +
+				`"done_reason":"stop","prompt_eval_count":37,"eval_count":4}`,
+		} {
+			_, _ = w.Write([]byte(line + "\n"))
+		}
+	})
+
+	var chunks []string
+	response, err := client.ChatStream(context.Background(), provider.ChatRequest{
+		Model: "qwen2.5:0.5b", Messages: []provider.Message{{Role: "user", Content: "hi"}},
+	}, func(chunk provider.Chunk) error {
+		chunks = append(chunks, chunk.Content)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("ChatStream() returned error: %v", err)
+	}
+
+	if received["stream"] != true {
+		t.Errorf("request stream = %v, want true", received["stream"])
+	}
+	if len(chunks) != 2 || chunks[0] != "PO" || chunks[1] != "NG" {
+		t.Errorf("chunks = %v, want the two content increments only", chunks)
+	}
+	// The aggregate is what usage accounting is built from, so it must match
+	// what the client actually received.
+	if response.Content != "PONG" {
+		t.Errorf("Content = %q, want the concatenated chunks", response.Content)
+	}
+	if response.FinishReason != "stop" {
+		t.Errorf("FinishReason = %q, want stop", response.FinishReason)
+	}
+	want := provider.Usage{PromptTokens: 37, CompletionTokens: 4, TotalTokens: 41}
+	if response.Usage != want {
+		t.Errorf("Usage = %+v, want %+v from the final chunk", response.Usage, want)
+	}
+}
+
+// A stream that ends before the provider says it is done produced a truncated
+// answer, which must not be reported as a success.
+func TestChatStreamRejectsTruncatedStream(t *testing.T) {
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"message":{"content":"half"},"done":false}` + "\n"))
+	})
+
+	_, err := client.ChatStream(context.Background(), provider.ChatRequest{
+		Model: "m", Messages: []provider.Message{{Role: "user", Content: "hi"}},
+	}, func(provider.Chunk) error { return nil })
+
+	if !errors.Is(err, provider.ErrUnavailable) {
+		t.Fatalf("error = %v, want ErrUnavailable", err)
+	}
+}
+
+// When the client goes away the adapter must stop rather than drain the rest of
+// the upstream response.
+func TestChatStreamStopsWhenEmitFails(t *testing.T) {
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		for range 10 {
+			_, _ = w.Write([]byte(`{"message":{"content":"x"},"done":false}` + "\n"))
+		}
+		_, _ = w.Write([]byte(`{"done":true,"done_reason":"stop"}` + "\n"))
+	})
+
+	stop := errors.New("client gone")
+	emitted := 0
+	_, err := client.ChatStream(context.Background(), provider.ChatRequest{
+		Model: "m", Messages: []provider.Message{{Role: "user", Content: "hi"}},
+	}, func(provider.Chunk) error {
+		emitted++
+		return stop
+	})
+
+	if !errors.Is(err, stop) {
+		t.Fatalf("error = %v, want the emit error propagated", err)
+	}
+	if emitted != 1 {
+		t.Errorf("emitted %d chunks after a failure, want 1", emitted)
+	}
+}
+
+func TestChatStreamReportsUnavailable(t *testing.T) {
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	})
+
+	_, err := client.ChatStream(context.Background(), provider.ChatRequest{
+		Model: "m", Messages: []provider.Message{{Role: "user", Content: "hi"}},
+	}, func(provider.Chunk) error { return nil })
+
+	if !errors.Is(err, provider.ErrUnavailable) {
+		t.Fatalf("error = %v, want ErrUnavailable", err)
+	}
+}
+
 func TestChatReportsUnavailable(t *testing.T) {
 	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadGateway)

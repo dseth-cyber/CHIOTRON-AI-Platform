@@ -147,6 +147,77 @@ func TestChatPropagatesProviderFailure(t *testing.T) {
 	}
 }
 
+type streamingFakeLLM struct {
+	fakeLLM
+	chunks []string
+}
+
+func (s *streamingFakeLLM) ChatStream(_ context.Context, req ChatRequest, emit func(Chunk) error) (ChatResponse, error) {
+	s.lastModel = req.Model
+	content := ""
+	for _, chunk := range s.chunks {
+		if err := emit(Chunk{Content: chunk}); err != nil {
+			return ChatResponse{}, err
+		}
+		content += chunk
+	}
+	return ChatResponse{Model: req.Model, Content: content}, nil
+}
+
+func TestChatStreamUsesStreamingProvider(t *testing.T) {
+	llm := &streamingFakeLLM{fakeLLM: fakeLLM{name: "ollama"}, chunks: []string{"PO", "NG"}}
+	registry := newTestRegistry(t, llm)
+
+	var chunks []string
+	response, route, err := registry.ChatStream(context.Background(), "", ChatRequest{}, func(c Chunk) error {
+		chunks = append(chunks, c.Content)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("ChatStream() returned error: %v", err)
+	}
+	if len(chunks) != 2 {
+		t.Errorf("emitted %d chunks, want 2 from the streaming provider", len(chunks))
+	}
+	if response.Content != "PONG" {
+		t.Errorf("Content = %q, want PONG", response.Content)
+	}
+	if route.Logical != "default" {
+		t.Errorf("route.Logical = %q, want default", route.Logical)
+	}
+}
+
+// A provider that cannot stream is not an error: the caller still gets a
+// well-formed stream and does not have to know which backend served it.
+func TestChatStreamFallsBackForNonStreamingProvider(t *testing.T) {
+	llm := &fakeLLM{name: "ollama"}
+	registry := newTestRegistry(t, llm)
+
+	var chunks []string
+	response, _, err := registry.ChatStream(context.Background(), "", ChatRequest{}, func(c Chunk) error {
+		chunks = append(chunks, c.Content)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("ChatStream() returned error: %v", err)
+	}
+	if len(chunks) != 1 || chunks[0] != "ok" {
+		t.Errorf("chunks = %v, want the whole response as a single chunk", chunks)
+	}
+	if response.Content != "ok" {
+		t.Errorf("Content = %q, want ok", response.Content)
+	}
+}
+
+func TestChatStreamRejectsUnknownModel(t *testing.T) {
+	registry := newTestRegistry(t, &fakeLLM{name: "ollama"})
+
+	_, _, err := registry.ChatStream(context.Background(), "nope", ChatRequest{}, func(Chunk) error { return nil })
+	if !errors.Is(err, ErrUnknownModel) {
+		t.Errorf("error = %v, want ErrUnknownModel", err)
+	}
+}
+
 func newTestRegistry(t *testing.T, providers ...LLM) *Registry {
 	t.Helper()
 	routes, err := ParseRoutes("default=ollama/qwen2.5:0.5b,fast=ollama/qwen2.5:0.5b-instruct")

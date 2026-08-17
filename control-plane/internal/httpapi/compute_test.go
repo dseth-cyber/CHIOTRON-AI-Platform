@@ -46,7 +46,7 @@ type computeFixture struct {
 	limiter *fakeLimiter
 }
 
-func newComputeFixture(t *testing.T, p *fakeProvider, mutate ...func(*Deps)) computeFixture {
+func newComputeFixture(t *testing.T, p provider.LLM, mutate ...func(*Deps)) computeFixture {
 	t.Helper()
 	routes, err := provider.ParseRoutes("default=ollama/qwen2.5:0.5b")
 	if err != nil {
@@ -212,7 +212,7 @@ func TestChatRejectsBadRequests(t *testing.T) {
 	}{
 		"not json":      {`{`, http.StatusBadRequest},
 		"no messages":   {`{"messages":[]}`, http.StatusBadRequest},
-		"unknown field": {`{"messages":[{"role":"user","content":"hi"}],"stream":true}`, http.StatusBadRequest},
+		"unknown field": {`{"messages":[{"role":"user","content":"hi"}],"topP":0.9}`, http.StatusBadRequest},
 		"unknown model": {`{"model":"nope","messages":[{"role":"user","content":"hi"}]}`, http.StatusNotFound},
 	}
 	for name, tc := range cases {

@@ -57,14 +57,33 @@ type Model struct {
 	SizeBytes     int64  `json:"sizeBytes,omitempty"`
 }
 
+// Chunk is one increment of a streamed response. Usage and FinishReason are
+// populated on the final chunk only, because that is when the provider knows
+// them.
+type Chunk struct {
+	Content      string `json:"content,omitempty"`
+	Done         bool   `json:"done,omitempty"`
+	FinishReason string `json:"finishReason,omitempty"`
+	Usage        *Usage `json:"usage,omitempty"`
+}
+
 // LLM is the only surface business code may depend on for text generation.
-//
-// Streaming is intentionally absent: SSE belongs to the Gateway phase, where
-// it arrives together with authentication and quota enforcement
-// (ARCHITECTURE-v1 section 7).
 type LLM interface {
 	Name() string
 	Health(ctx context.Context) error
 	Models(ctx context.Context) ([]Model, error)
 	Chat(ctx context.Context, req ChatRequest) (ChatResponse, error)
+}
+
+// StreamingLLM is implemented by providers that can emit a response
+// incrementally. It is optional: a provider without it still works, and the
+// Registry degrades to a single chunk rather than refusing the request.
+//
+// emit returns an error when the client has gone away; the adapter must stop
+// and return it rather than draining the rest of the upstream response.
+// ChatStream returns the assembled response so usage accounting does not have
+// to be duplicated per transport.
+type StreamingLLM interface {
+	LLM
+	ChatStream(ctx context.Context, req ChatRequest, emit func(Chunk) error) (ChatResponse, error)
 }

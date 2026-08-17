@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"encoding/json"
-	"errors"
 	"net/http"
 	"time"
 
@@ -35,6 +34,7 @@ type chatRequestBody struct {
 	Messages    []provider.Message `json:"messages"`
 	Temperature *float64           `json:"temperature,omitempty"`
 	MaxTokens   *int               `json:"maxTokens,omitempty"`
+	Stream      bool               `json:"stream,omitempty"`
 }
 
 // registerCompute adds the compute-plane routes.
@@ -136,8 +136,21 @@ func registerCompute(mux *http.ServeMux, d Deps) {
 			return
 		}
 
+		// Resolve before doing any work so an unknown model is a clean 404 in
+		// both modes, rather than an error frame inside an established stream.
+		if _, _, err := d.Compute.Resolve(body.Model); err != nil {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+			return
+		}
+
 		ctx, cancel := contextWithTimeout(r, cfg.ComputeTimeout)
 		defer cancel()
+
+		if body.Stream {
+			_, route, _ := d.Compute.Resolve(body.Model)
+			d.streamChat(ctx, w, r, caller, body, route)
+			return
+		}
 
 		started := time.Now()
 		response, route, err := d.Compute.Chat(ctx, body.Model, provider.ChatRequest{
@@ -153,20 +166,7 @@ func registerCompute(mux *http.ServeMux, d Deps) {
 				LogicalModel: orDefault(route.Logical, body.Model), Provider: route.Provider, Model: route.Model,
 				LatencyMs: time.Since(started).Milliseconds(), Outcome: audit.OutcomeFailure,
 			})
-		}
-
-		switch {
-		case errors.Is(err, provider.ErrUnknownModel):
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
-			return
-		case errors.Is(err, provider.ErrUnavailable):
-			// The Control Plane is fine; the compute plane is not.
-			d.Log.Error("compute call failed", "provider", route.Provider, "model", route.Model, "error", err)
-			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "compute provider unavailable"})
-			return
-		case err != nil:
-			d.Log.Error("compute call failed", "error", err)
-			writeJSON(w, http.StatusBadGateway, map[string]string{"error": "compute call failed"})
+			d.writeChatError(w, err, route)
 			return
 		}
 
