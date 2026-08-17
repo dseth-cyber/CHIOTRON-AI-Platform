@@ -1,0 +1,10 @@
+# Keep LF in the working tree on every platform.
+#
+# The Go toolchain and the container shell scripts run on Linux even when the
+# development host is Windows: a CRLF checkout would make `gofmt -l` report
+# every file as unformatted and would break `sh` here-documents.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.ico binary

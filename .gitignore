@@ -1,0 +1,7 @@
+.env
+data/
+web/node_modules/
+web/dist/
+
+# Runtime artefacts from local container/model bring-up
+*.log

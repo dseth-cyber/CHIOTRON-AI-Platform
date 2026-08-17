@@ -1,0 +1,118 @@
+name: chiotron-ai
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-chiotron_ai}
+      POSTGRES_USER: ${POSTGRES_USER:-chiotron_ai}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me-before-production}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/001-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [control]
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [control]
+
+  api:
+    build:
+      context: ./control-plane
+      args:
+        VERSION: ${VERSION:-dev}
+    environment:
+      AI_DATABASE_URL: ${AI_DATABASE_URL:-postgres://chiotron_ai:change-me-before-production@postgres:5432/chiotron_ai?sslmode=disable}
+      REDIS_ADDR: ${REDIS_ADDR:-redis:6379}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      REDIS_DB: ${REDIS_DB:-0}
+      COMPUTE_PROVIDER: ${COMPUTE_PROVIDER:-ollama}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
+      MODEL_ROUTES: ${MODEL_ROUTES:-default=ollama/qwen2.5:0.5b}
+      DEFAULT_MODEL: ${DEFAULT_MODEL:-default}
+      COMPUTE_TIMEOUT: ${COMPUTE_TIMEOUT:-120s}
+      COMPUTE_HEALTH_TIMEOUT: ${COMPUTE_HEALTH_TIMEOUT:-5s}
+      # Development affordance only. The chat endpoint has no identity check
+      # until the Gateway's JWT middleware lands.
+      DEV_UNAUTHENTICATED_CHAT: ${DEV_UNAUTHENTICATED_CHAT:-false}
+      HTTP_ADDR: ${HTTP_ADDR:-:8080}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
+      STARTUP_TIMEOUT: ${STARTUP_TIMEOUT:-30s}
+      SHUTDOWN_TIMEOUT: ${SHUTDOWN_TIMEOUT:-15s}
+      READINESS_TIMEOUT: ${READINESS_TIMEOUT:-2s}
+      # Metrics are always served on /metrics. Traces are exported only when a
+      # collector endpoint is set, so local development runs without one.
+      OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-ai-control-plane}
+      DEPLOYMENT_ENVIRONMENT: ${DEPLOYMENT_ENVIRONMENT:-development}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      OTEL_EXPORTER_OTLP_INSECURE: ${OTEL_EXPORTER_OTLP_INSECURE:-true}
+      OTEL_TRACES_SAMPLER_ARG: ${OTEL_TRACES_SAMPLER_ARG:-1.0}
+    # The distroless image ships no shell, so readiness is verified from the
+    # host with `curl http://localhost:8080/readyz` rather than a compose
+    # healthcheck. Production uses an HTTP probe against /readyz.
+    stop_grace_period: 20s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    networks: [control, compute]
+
+  portal:
+    build:
+      context: ./web
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8080}
+    depends_on:
+      - api
+    ports:
+      - "5173:80"
+    networks: [control]
+
+  # VM5 substitute for local development. In production it belongs on an isolated GPU VM.
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["compute"]
+    volumes:
+      - ollama-data:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    # `control` is development-only egress for initial model downloads.
+    # No host port is published; production VM5 should use a controlled egress path.
+    networks: [compute, control]
+
+networks:
+  control:
+    # Docker Desktop on this development host has exhausted its automatic
+    # address pools, so reuse this pre-existing local development network.
+    external: true
+    name: chiotron_default
+  compute:
+    external: true
+    name: chiotron-ai_compute
+
+volumes:
+  postgres-data:
+  redis-data:
+  ollama-data:

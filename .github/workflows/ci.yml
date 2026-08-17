@@ -1,0 +1,97 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  control-plane:
+    name: Control Plane (Go)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: control-plane
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: control-plane/go.mod
+          cache-dependency-path: control-plane/go.sum
+
+      # go.mod and go.sum must already describe the imports; a diff here means
+      # a dependency was added without committing the resolved versions.
+      - name: Verify module files are tidy
+        run: |
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum
+
+      - name: Check formatting
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "These files are not gofmt-formatted:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test -race ./...
+
+      - name: Build
+        run: go build ./...
+
+  portal:
+    name: Portal (web)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # The portal has no lockfile yet, so this resolves current versions
+      # rather than pinned ones. Adding package-lock.json and switching to
+      # `npm ci` is tracked as a known gap in README.md.
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build
+        run: npm run build
+
+  compose:
+    name: Compose definition
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate compose file
+        run: docker compose config --quiet
+
+  images:
+    name: Container images
+    runs-on: ubuntu-latest
+    needs: [control-plane, portal]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build control plane image
+        run: docker build -t chiotron-ai-api:ci ./control-plane
+
+      - name: Build portal image
+        run: docker build -t chiotron-ai-portal:ci ./web

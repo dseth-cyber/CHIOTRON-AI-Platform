@@ -1,0 +1,155 @@
+// Package httpapi exposes the Control Plane's HTTP surface. Today that is
+// liveness, readiness, metrics and platform discovery; the Gateway endpoints in
+// ARCHITECTURE-v1 section 7 are layered on top of this router.
+package httpapi
+
+import (
+	"context"
+	"encoding/json"
+	"log/slog"
+	"net/http"
+	"time"
+
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+
+	"github.com/chiotron/ai-control-plane/internal/config"
+	"github.com/chiotron/ai-control-plane/internal/provider"
+)
+
+// Checker reports whether one backing dependency is usable right now.
+type Checker interface {
+	Name() string
+	Check(ctx context.Context) error
+}
+
+// CheckerFunc adapts a probe function into a Checker.
+type CheckerFunc struct {
+	DependencyName string
+	Probe          func(ctx context.Context) error
+}
+
+func (c CheckerFunc) Name() string                    { return c.DependencyName }
+func (c CheckerFunc) Check(ctx context.Context) error { return c.Probe(ctx) }
+
+// Deps is everything the router needs from the rest of the process.
+type Deps struct {
+	Config   config.Config
+	Log      *slog.Logger
+	Metrics  http.Handler
+	Checkers []Checker
+	Compute  *provider.Registry
+}
+
+// contextWithTimeout bounds a handler's downstream work without outliving the
+// request itself.
+func contextWithTimeout(r *http.Request, timeout time.Duration) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(r.Context(), timeout)
+}
+
+type checkResult struct {
+	Status    string `json:"status"`
+	LatencyMs int64  `json:"latencyMs"`
+	Error     string `json:"error,omitempty"`
+}
+
+// NewRouter builds the Control Plane handler with its middleware applied.
+func NewRouter(d Deps) http.Handler {
+	cfg := d.Config
+	mux := http.NewServeMux()
+
+	// Liveness answers without touching dependencies: a failing database means
+	// not ready, not dead, and restarting the process would not fix it.
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"status":          "ok",
+			"service":         cfg.ServiceName,
+			"version":         cfg.ServiceVersion,
+			"computeProvider": cfg.ComputeProvider,
+			"time":            time.Now().UTC().Format(time.RFC3339),
+		})
+	})
+
+	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), cfg.ReadinessTimeout)
+		defer cancel()
+
+		results := make(map[string]checkResult, len(d.Checkers))
+		ready := true
+		for _, checker := range d.Checkers {
+			started := time.Now()
+			result := checkResult{Status: "ok"}
+			if err := checker.Check(ctx); err != nil {
+				result.Status = "unavailable"
+				result.Error = err.Error()
+				ready = false
+			}
+			result.LatencyMs = time.Since(started).Milliseconds()
+			results[checker.Name()] = result
+		}
+
+		status, label := http.StatusOK, "ready"
+		if !ready {
+			status, label = http.StatusServiceUnavailable, "not-ready"
+		}
+		writeJSON(w, status, map[string]any{
+			"status": label,
+			"checks": results,
+			"time":   time.Now().UTC().Format(time.RFC3339),
+		})
+	})
+
+	if d.Metrics != nil {
+		mux.Handle("GET /metrics", d.Metrics)
+	}
+
+	mux.HandleFunc("GET /api/v1/platform", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"name":            "CHIOTRON Enterprise AI Platform",
+			"plane":           "control",
+			"version":         cfg.ServiceVersion,
+			"environment":     cfg.Environment,
+			"capabilities":    []string{"gateway", "orchestration", "audit", "model-provider-routing"},
+			"computeProvider": cfg.ComputeProvider,
+		})
+	})
+
+	registerCompute(mux, d)
+
+	// Ordering matters, outermost first:
+	//   recoverPanic  - nothing below it can take the process down
+	//   otelhttp      - starts the span and records server metrics
+	//   requestLog    - runs inside the span, so it can log its trace id
+	//   securityHeaders / cors - response shaping, closest to the routes
+	handler := chain(mux,
+		requestLog(d.Log),
+		securityHeaders,
+		cors(cfg.AllowedOrigins),
+	)
+	handler = otelhttp.NewHandler(handler, cfg.ServiceName,
+		otelhttp.WithFilter(shouldTrace),
+		otelhttp.WithSpanNameFormatter(spanName),
+	)
+	return recoverPanic(d.Log)(handler)
+}
+
+// shouldTrace keeps operational polling out of the trace backend. Kubernetes
+// probes and Prometheus scrape continuously and would otherwise dominate Tempo.
+func shouldTrace(r *http.Request) bool {
+	switch r.URL.Path {
+	case "/healthz", "/readyz", "/metrics":
+		return false
+	}
+	return true
+}
+
+// spanName keeps span names low-cardinality. Routes with path parameters must
+// be named from the matched pattern rather than the raw path when they arrive.
+func spanName(_ string, r *http.Request) string {
+	return r.Method + " " + r.URL.Path
+}
+
+func writeJSON(w http.ResponseWriter, status int, body any) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(body)
+}
