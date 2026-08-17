@@ -7,6 +7,7 @@ import {
   type TokenUsage,
 } from './api';
 import { useAssistants, useConversation, useConversations, useRefreshHistory } from './hooks';
+import { useTranslation } from './LanguageContext';
 
 type Turn = {
   role: 'user' | 'assistant';
@@ -18,6 +19,7 @@ type Turn = {
 };
 
 export function ChatWorkspace({ onConnect }: { onConnect: () => void }) {
+  const { t, formatNumber } = useTranslation();
   const assistants = useAssistants(true);
   const history = useConversations(true);
   const refreshHistory = useRefreshHistory();
@@ -89,7 +91,7 @@ export function ChatWorkspace({ onConnect }: { onConnect: () => void }) {
       if (conversationId === summary.id) startNew();
       refreshHistory();
     } catch (failed) {
-      setError(failed instanceof Error ? failed.message : 'could not delete the conversation');
+      setError(failed instanceof Error ? failed.message : t('chat.error.deleteFailed'));
     }
   };
 
@@ -97,7 +99,11 @@ export function ChatWorkspace({ onConnect }: { onConnect: () => void }) {
     const question = prompt.trim();
     if (question === '' || streaming || assistant === '') return;
 
-    setTurns((current) => [...current, { role: 'user', content: question }, { role: 'assistant', content: '' }]);
+    setTurns((current) => [
+      ...current,
+      { role: 'user', content: question },
+      { role: 'assistant', content: '' },
+    ]);
     setPrompt('');
     setError('');
     setStreaming(true);
@@ -148,7 +154,7 @@ export function ChatWorkspace({ onConnect }: { onConnect: () => void }) {
       if (controller.signal.aborted) {
         patchLast({ finishReason: 'cancelled' });
       } else {
-        setError(failed instanceof Error ? failed.message : 'the request failed');
+        setError(failed instanceof Error ? failed.message : t('chat.error.failed'));
         // Drop the empty assistant turn rather than leaving a blank bubble.
         setTurns((current) =>
           current.filter((turn, index) => index !== current.length - 1 || turn.content !== ''),
@@ -164,14 +170,10 @@ export function ChatWorkspace({ onConnect }: { onConnect: () => void }) {
     const rejected = assistants.error instanceof ApiError && assistants.error.status === 403;
     return (
       <section className="chat-empty">
-        <h2>{rejected ? 'This key cannot read assistants' : 'Cannot reach the assistant catalogue'}</h2>
-        <p>
-          {rejected
-            ? 'The connected key is missing the assistants:read scope. Connect a key that has it.'
-            : assistants.error.message}
-        </p>
+        <h2>{rejected ? t('chat.error.scope.title') : t('chat.error.catalogue.title')}</h2>
+        <p>{rejected ? t('chat.error.scope.body') : assistants.error.message}</p>
         <button className="primary" onClick={onConnect}>
-          Change key
+          {t('action.changeKey')}
         </button>
       </section>
     );
@@ -184,46 +186,50 @@ export function ChatWorkspace({ onConnect }: { onConnect: () => void }) {
     <section className="workspace">
       <aside className="history">
         <div className="history-head">
-          <span className="panel-label">History</span>
+          <span className="panel-label">{t('chat.history')}</span>
           <button className="text-button" onClick={startNew}>
-            New chat <span>+</span>
+            {t('action.newChat')} <span>+</span>
           </button>
         </div>
         {history.isError && <p className="error-note">{history.error.message}</p>}
         {conversations.length === 0 && !history.isPending && (
-          <p className="history-hint">Conversations you start are kept here.</p>
+          <p className="history-hint">{t('chat.historyEmpty')}</p>
         )}
         <ul className="history-list">
-          {conversations.map((summary) => (
-            <li key={summary.id} className={summary.id === conversationId ? 'current' : ''}>
-              <button className="history-item" onClick={() => open(summary)}>
-                <b>{summary.title || 'Untitled conversation'}</b>
-                <small>
-                  {summary.assistantName ?? 'unknown assistant'} · {summary.messageCount} messages ·{' '}
-                  {summary.totalTokens} tokens
-                </small>
-              </button>
-              <button
-                className="history-delete"
-                aria-label={`Delete ${summary.title}`}
-                onClick={() => void remove(summary)}
-              >
-                ×
-              </button>
-            </li>
-          ))}
+          {conversations.map((summary) => {
+            const title = summary.title || t('chat.untitled');
+            return (
+              <li key={summary.id} className={summary.id === conversationId ? 'current' : ''}>
+                <button className="history-item" onClick={() => open(summary)}>
+                  <b>{title}</b>
+                  <small>
+                    {t('chat.summary', {
+                      assistant: summary.assistantName ?? t('chat.unknownAssistant'),
+                      messages: formatNumber(summary.messageCount),
+                      tokens: formatNumber(summary.totalTokens),
+                    })}
+                  </small>
+                </button>
+                <button
+                  className="history-delete"
+                  aria-label={t('chat.delete', { title })}
+                  onClick={() => void remove(summary)}
+                >
+                  ×
+                </button>
+              </li>
+            );
+          })}
         </ul>
         {history.data?.promptsPersisted === false && (
-          <p className="history-hint">
-            Prompt logging is off, so stored turns carry no text. Titles and counts still work.
-          </p>
+          <p className="history-hint">{t('chat.promptsOff')}</p>
         )}
       </aside>
 
       <div className="chat">
         <header className="chat-bar">
           <label className="field inline">
-            <span>Assistant</span>
+            <span>{t('chat.assistant')}</span>
             <select
               value={assistant}
               // An existing conversation is bound to the assistant it started
@@ -239,33 +245,40 @@ export function ChatWorkspace({ onConnect }: { onConnect: () => void }) {
             </select>
           </label>
           <span className="chat-meta">
-            {selected ? `${selected.description} · model ${selected.logicalModel}` : ''}
+            {selected
+              ? t('chat.assistantMeta', {
+                  description: selected.description,
+                  model: selected.logicalModel,
+                })
+              : ''}
           </span>
         </header>
 
         <div className="transcript" ref={transcript}>
-          {turns.length === 0 && (
-            <p className="transcript-hint">
-              Messages are sent through the AI Gateway. Nothing here reaches a model provider
-              directly.
-            </p>
-          )}
+          {turns.length === 0 && <p className="transcript-hint">{t('chat.transcriptHint')}</p>}
           {turns.map((turn, index) => (
             <article className={`turn ${turn.role}`} key={index}>
-              <span className="turn-role">{turn.role === 'user' ? 'You' : 'Assistant'}</span>
+              <span className="turn-role">
+                {turn.role === 'user' ? t('chat.you') : t('chat.assistantRole')}
+              </span>
               <p>
-                {turn.redacted ? <i className="redacted">content not stored</i> : turn.content}
+                {turn.redacted ? <i className="redacted">{t('chat.notStored')}</i> : turn.content}
                 {streaming && index === turns.length - 1 && <i className="caret" />}
               </p>
               {turn.usage && (
                 <small>
-                  {turn.usage.totalTokens} tokens ({turn.usage.promptTokens} in ·{' '}
-                  {turn.usage.completionTokens} out)
-                  {turn.latencyMs ? ` · ${turn.latencyMs} ms` : ''}
+                  {t('chat.usage', {
+                    total: formatNumber(turn.usage.totalTokens),
+                    input: formatNumber(turn.usage.promptTokens),
+                    output: formatNumber(turn.usage.completionTokens),
+                  })}
+                  {turn.latencyMs ? ` · ${formatNumber(turn.latencyMs)} ms` : ''}
                   {turn.finishReason ? ` · ${turn.finishReason}` : ''}
                 </small>
               )}
-              {!turn.usage && turn.finishReason === 'cancelled' && <small>cancelled</small>}
+              {!turn.usage && turn.finishReason === 'cancelled' && (
+                <small>{t('chat.cancelled')}</small>
+              )}
             </article>
           ))}
         </div>
@@ -276,7 +289,9 @@ export function ChatWorkspace({ onConnect }: { onConnect: () => void }) {
           <textarea
             value={prompt}
             rows={3}
-            placeholder={selected ? `Ask ${selected.name}…` : 'Ask something…'}
+            placeholder={
+              selected ? t('chat.placeholderNamed', { name: selected.name }) : t('chat.placeholder')
+            }
             onChange={(event) => setPrompt(event.target.value)}
             onKeyDown={(event) => {
               // Enter sends, Shift+Enter starts a new line.
@@ -288,7 +303,7 @@ export function ChatWorkspace({ onConnect }: { onConnect: () => void }) {
           />
           {streaming ? (
             <button className="secondary" onClick={() => abort.current?.abort()}>
-              Stop
+              {t('action.stop')}
             </button>
           ) : (
             <button
@@ -296,7 +311,7 @@ export function ChatWorkspace({ onConnect }: { onConnect: () => void }) {
               onClick={() => void send()}
               disabled={prompt.trim() === '' || assistant === ''}
             >
-              Send
+              {t('action.send')}
             </button>
           )}
         </div>

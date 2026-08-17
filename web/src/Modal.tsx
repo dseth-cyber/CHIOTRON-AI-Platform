@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { useTranslation } from './LanguageContext';
 
 export function Modal({
   title,
@@ -9,10 +10,12 @@ export function Modal({
   children: ReactNode;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
+
   return (
     <div className="modal-backdrop" role="presentation">
       <section className="modal" role="dialog" aria-modal="true" aria-label={title}>
-        <button className="close" aria-label="Close dialog" onClick={onClose}>
+        <button className="close" aria-label={t('action.close')} onClick={onClose}>
           ×
         </button>
         <h2>{title}</h2>

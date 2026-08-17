@@ -5,6 +5,8 @@ import './styles.css';
 import { Modal } from './Modal';
 import { ChatWorkspace } from './Chat';
 import { ConnectDialog, ConnectionBadge, SCOPE_ASSISTANTS_READ, SCOPE_CHAT } from './Connection';
+import { LanguageProvider, LanguageSwitcher, useTranslation } from './LanguageContext';
+import type { TranslationKey } from './i18n';
 import { useComputeHealth, useCredential, useModels, usePlatform, useScopes } from './hooks';
 
 type PhaseStatus = 'complete' | 'active' | 'planned';
@@ -12,10 +14,13 @@ type Phase = { id: number; title: string; detail: string; progress: number; done
 type View = 'portal' | 'roadmap' | 'rules' | 'architecture' | 'chat';
 type Overview = { total: number; done: number; progress: number; active: number };
 
+// Phase titles, milestone names and governance text mirror ARCHITECTURE-v1 and
+// are kept in its language until a translation review covers them. Every string
+// the platform itself owns goes through t().
 const initialPhases: Phase[] = [
   { id: 1, title: 'Foundation', detail: 'Contracts, service boundaries, migrations and platform configuration', progress: 80, done: 4, total: 5, status: 'active', sprints: ['Architecture v1 and service boundaries recorded', 'Development compose and AI database foundation available', 'Service-owned migrations and configuration', 'OpenTelemetry baseline and CI checks', 'Identity/JWT contract integration'] },
   { id: 2, title: 'AI Gateway', detail: 'JWT/API key enforcement, quota, streaming, usage and audit outbox', progress: 80, done: 4, total: 5, status: 'active', sprints: ['Health and platform discovery endpoint available', 'API keys, scopes and rotation', 'Usage metadata and audit outbox', 'Rate limits, quota and SSE streaming', 'JWT validation and active-company guard'] },
-  { id: 3, title: 'User Portal', detail: 'Assistant-first workspace, history, permissions and multilingual UI', progress: 83, done: 5, total: 6, status: 'active', sprints: ['Application shell and Developer Portal delivered', 'Roadmap tracking UI delivered', 'Gateway-connected portal and chat workspace', 'Permission-aware navigation', 'Assistant catalogue and conversation history', 'Thai, English, Chinese, Burmese and Japanese i18n'] },
+  { id: 3, title: 'User Portal', detail: 'Assistant-first workspace, history, permissions and multilingual UI', progress: 100, done: 6, total: 6, status: 'complete', sprints: ['Application shell and Developer Portal delivered', 'Roadmap tracking UI delivered', 'Gateway-connected portal and chat workspace', 'Permission-aware navigation', 'Assistant catalogue and conversation history', 'Thai, English, Chinese, Burmese and Japanese i18n'] },
   { id: 4, title: 'Local LLM', detail: 'Provider routing, compute health and isolated local inference', progress: 100, done: 5, total: 5, status: 'complete', sprints: ['Ollama Compute Plane running', 'NVIDIA GPU passthrough verified', 'Qwen smoke-test model loaded', 'Provider-neutral Ollama adapter', 'Compute registry and model router'] },
   { id: 5, title: 'Knowledge Platform', detail: 'Document ACL, ingestion, embedding pipeline and hybrid search', progress: 0, done: 0, total: 6, status: 'planned', sprints: ['StorageProvider and source configuration', 'Document connector and upload contract', 'ACL metadata and classification policy', 'Parser, chunking and provenance', 'Embedding worker and pgvector storage', 'Permission-filtered hybrid retrieval'] },
   { id: 6, title: 'Agentic RAG', detail: 'Planner, controlled tools, citations and retrieval policies', progress: 0, done: 0, total: 5, status: 'planned', sprints: ['Intent and planner policy', 'Controlled tool registry', 'Agent authorization and rate limits', 'Multi-step retrieval and conflict handling', 'Citation and evaluation suite'] },
@@ -28,15 +33,13 @@ const initialPhases: Phase[] = [
   { id: 13, title: 'High Availability & Kubernetes', detail: 'Production resilience, recovery and Kubernetes-ready deployment', progress: 0, done: 0, total: 6, status: 'planned', sprints: ['VM4 horizontal scaling design', 'Database recovery test', 'Compute-plane failure drill', 'Kubernetes manifests and secrets strategy', 'Rolling deployment and rollback plan', 'Capacity and disaster-recovery validation'] },
 ];
 
-const PAGE_TITLES: Record<View, { crumb: string; title: string }> = {
-  rules: { crumb: 'CORE GOVERNANCE', title: 'กฎหลักที่ต้องไม่หลุด' },
-  architecture: { crumb: 'SYSTEM ARCHITECTURE', title: 'สถาปัตยกรรมระบบ' },
-  roadmap: { crumb: 'ROADMAP', title: 'Roadmap' },
-  chat: { crumb: 'WORKSPACE', title: 'Chat' },
-  portal: { crumb: 'DEVELOPER PORTAL', title: 'Developer Portal' },
+const MODULE_KEYS = ['api', 'module', 'event', 'map', 'flags', 'prompts'] as const;
+const MODULE_TAGS: Record<(typeof MODULE_KEYS)[number], string> = {
+  api: 'API', module: 'MOD', event: 'EVT', map: 'MAP', flags: 'FLG', prompts: 'PRM',
 };
 
 function App() {
+  const { t } = useTranslation();
   const [view, setView] = useState<View>('portal');
   const [phases, setPhases] = useState(initialPhases);
   const [expanded, setExpanded] = useState<number | null>(1);
@@ -57,26 +60,25 @@ function App() {
   const updateProgress = (id: number, progress: number) => setPhases((current) => current.map((phase) => phase.id !== id ? phase : { ...phase, progress, done: Math.round((progress / 100) * phase.total), status: progress === 100 ? 'complete' : progress > 0 ? 'active' : 'planned' }));
   const addPhase = () => { const id = Math.max(...phases.map((phase) => phase.id)) + 1; setPhases((current) => [...current, { id, title: 'New delivery phase', detail: 'Define the objective and delivery milestones.', progress: 0, done: 0, total: 3, status: 'planned', sprints: ['Define outcome', 'Implement', 'Validate'] }]); setShowAdd(false); setView('roadmap'); };
 
-  const page = PAGE_TITLES[view];
   const portalActive = view === 'portal' || view === 'rules' || view === 'architecture';
 
   return (
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand"><span className="brand-mark">C</span><span>CHIOTRON</span></div>
-        <p className="workspace-label">AI PLATFORM</p>
-        <nav className="side-nav" aria-label="Platform navigation">
-          <button className={portalActive ? 'nav-item active' : 'nav-item'} onClick={() => setView('portal')}><span>DP</span>Developer Portal</button>
-          <button className={view === 'roadmap' ? 'nav-item active' : 'nav-item'} onClick={() => setView('roadmap')}><span>RM</span>Roadmap</button>
+        <p className="workspace-label">{t('nav.platform')}</p>
+        <nav className="side-nav" aria-label={t('nav.platform')}>
+          <button className={portalActive ? 'nav-item active' : 'nav-item'} onClick={() => setView('portal')}><span>DP</span>{t('nav.developerPortal')}</button>
+          <button className={view === 'roadmap' ? 'nav-item active' : 'nav-item'} onClick={() => setView('roadmap')}><span>RM</span>{t('nav.roadmap')}</button>
           {/* Navigation follows the connected key's scopes. This is convenience
               only: the backend authorizes every request regardless. */}
           <button
             className={view === 'chat' ? 'nav-item active' : canChat ? 'nav-item' : 'nav-item muted'}
             onClick={() => canChat && setView('chat')}
             disabled={!canChat}
-            title={canChat ? undefined : 'Needs a key with the chat:completions and assistants:read scopes'}
-          ><span>CH</span>Chat</button>
-          <button className="nav-item muted" disabled><span>KN</span>Knowledge</button>
+            title={canChat ? undefined : t('nav.chatDisabled')}
+          ><span>CH</span>{t('nav.chat')}</button>
+          <button className="nav-item muted" disabled title={t('nav.notBuilt')}><span>KN</span>{t('nav.knowledge')}</button>
         </nav>
         <div className="sidebar-foot">
           <ConnectionBadge onConnect={() => setShowConnect(true)} />
@@ -85,12 +87,16 @@ function App() {
 
       <main className="content">
         <header className="topbar">
-          <div><span className="crumb">PLATFORM / {page.crumb}</span><h1>{page.title}</h1></div>
+          <div>
+            <span className="crumb">PLATFORM / {t(`page.${view}.crumb` as TranslationKey)}</span>
+            <h1>{t(`page.${view}.title` as TranslationKey)}</h1>
+          </div>
           <div className="top-actions">
-            <button className="secondary" onClick={() => setShowConnect(true)}>API key</button>
+            <LanguageSwitcher />
+            <button className="secondary" onClick={() => setShowConnect(true)}>{t('action.apiKey')}</button>
             {view === 'roadmap'
-              ? <button className="primary" onClick={() => setShowAdd(true)}>Add phase</button>
-              : <button className="secondary" onClick={() => setView('roadmap')}>View roadmap</button>}
+              ? <button className="primary" onClick={() => setShowAdd(true)}>{t('action.addPhase')}</button>
+              : <button className="secondary" onClick={() => setView('roadmap')}>{t('action.viewRoadmap')}</button>}
           </div>
         </header>
 
@@ -101,7 +107,15 @@ function App() {
       </main>
 
       {showConnect && <ConnectDialog onClose={() => setShowConnect(false)} />}
-      {showAdd && <Modal title="Add roadmap phase" onClose={() => setShowAdd(false)}><p>A new planned phase with three delivery milestones will be added to the roadmap.</p><div className="modal-actions"><button className="secondary" onClick={() => setShowAdd(false)}>Cancel</button><button className="primary" onClick={addPhase}>Add phase</button></div></Modal>}
+      {showAdd && (
+        <Modal title={t('dialog.addPhase.title')} onClose={() => setShowAdd(false)}>
+          <p>{t('dialog.addPhase.body')}</p>
+          <div className="modal-actions">
+            <button className="secondary" onClick={() => setShowAdd(false)}>{t('action.cancel')}</button>
+            <button className="primary" onClick={addPhase}>{t('action.addPhase')}</button>
+          </div>
+        </Modal>
+      )}
       {showUpdate !== null && <ProgressModal phase={phases.find((phase) => phase.id === showUpdate)!} onClose={() => setShowUpdate(null)} onSave={(progress) => { updateProgress(showUpdate, progress); setShowUpdate(null); }} />}
     </div>
   );
@@ -119,6 +133,7 @@ function Stat({ label, value, hint, tone }: { label: string; value: string; hint
 }
 
 function DeveloperPortal({ overview, onRoadmap, onOpen, onConnect }: { overview: Overview; onRoadmap: () => void; onOpen: (view: 'rules' | 'architecture') => void; onConnect: () => void }) {
+  const { t, formatNumber } = useTranslation();
   const [credential] = useCredential();
   const connected = credential !== '';
   const platform = usePlatform();
@@ -128,72 +143,91 @@ function DeveloperPortal({ overview, onRoadmap, onOpen, onConnect }: { overview:
   const available = models.data?.models.filter((entry) => entry.available).length ?? 0;
   const total = models.data?.models.length ?? 0;
   const computeStatus = compute.data?.status;
-  const modules = [['API Registry', 'Versioned gateway contracts, scopes and owners', 'API'], ['Module Registry', 'Control Plane boundaries, health and dependencies', 'MOD'], ['Event Catalogue', 'Kafka topic proposals, groups and retention policy', 'EVT'], ['Dependency Map', 'Allowed synchronous and asynchronous service paths', 'MAP'], ['Feature Flags', 'Controlled rollout without redeployment', 'FLG'], ['Prompt Library', 'Approved assistant instructions and policy versions', 'PRM']];
 
   return (
     <>
       <section className="page-intro">
-        <p>Architecture governance, API contracts and platform delivery.</p>
+        <p>{t('portal.intro')}</p>
         <span>
           {platform.isSuccess
-            ? `${platform.data.name} · ${platform.data.plane} plane · ${platform.data.version}`
+            ? `${platform.data.name} · ${platform.data.plane} · ${platform.data.version}`
             : platform.isError
-              ? 'Control Plane unreachable'
-              : 'Reading platform discovery…'}
+              ? t('portal.discovery.error')
+              : t('portal.discovery.loading')}
         </span>
       </section>
 
       {!connected && (
         <section className="notice">
           <div>
-            <b>Not connected to the Gateway.</b>
-            <p>Platform discovery is public. Models, compute status and the chat workspace need an API key.</p>
+            <b>{t('portal.notice.title')}</b>
+            <p>{t('portal.notice.body')}</p>
           </div>
-          <button className="primary" onClick={onConnect}>Add API key</button>
+          <button className="primary" onClick={onConnect}>{t('conn.addKey')}</button>
         </section>
       )}
 
       <section className="governance-grid">
-        <button className="governance-card rules-card" onClick={() => onOpen('rules')}><span className="module-tag">RULE</span><div><h2>กฎหลักที่ต้องไม่หลุด</h2><p>ข้อบังคับของระบบ - ทุกฟีเจอร์ต้องยึดตาม</p></div><b>Open <i>→</i></b></button>
-        <button className="governance-card architecture-card" onClick={() => onOpen('architecture')}><span className="module-tag">ARCH</span><div><h2>สถาปัตยกรรมระบบ</h2><p>Stack จริงที่กำลังรันอยู่ และ boundary ของแต่ละ plane</p></div><b>Open <i>→</i></b></button>
+        <button className="governance-card rules-card" onClick={() => onOpen('rules')}>
+          <span className="module-tag">RULE</span>
+          <div><h2>{t('governance.rules.title')}</h2><p>{t('governance.rules.body')}</p></div>
+          <b>{t('action.open')} <i>→</i></b>
+        </button>
+        <button className="governance-card architecture-card" onClick={() => onOpen('architecture')}>
+          <span className="module-tag">ARCH</span>
+          <div><h2>{t('governance.architecture.title')}</h2><p>{t('governance.architecture.body')}</p></div>
+          <b>{t('action.open')} <i>→</i></b>
+        </button>
       </section>
 
       <section className="stat-grid">
         <Stat
-          label="Environment"
+          label={t('stat.environment')}
           value={platform.data?.environment ?? '—'}
-          hint={platform.data ? `version ${platform.data.version}` : 'from /api/v1/platform'}
+          hint={platform.data ? t('stat.environment.hint', { version: platform.data.version }) : t('stat.environment.hintEmpty')}
         />
         <Stat
-          label="Capabilities"
+          label={t('stat.capabilities')}
           value={platform.data ? String(platform.data.capabilities.length).padStart(2, '0') : '—'}
-          hint={platform.data?.capabilities.join(', ') ?? 'declared by the Control Plane'}
+          hint={platform.data?.capabilities.join(', ') ?? t('stat.capabilities.hintEmpty')}
         />
         <Stat
-          label="Models"
-          value={connected && models.isSuccess ? `${available}/${total}` : '—'}
-          hint={connected ? (models.isError ? models.error.message : 'logical routes loaded') : 'connect a key to read'}
+          label={t('stat.models')}
+          value={connected && models.isSuccess ? `${formatNumber(available)}/${formatNumber(total)}` : '—'}
+          hint={connected ? (models.isError ? models.error.message : t('stat.models.hint')) : t('stat.needsKey')}
         />
         <Stat
-          label="Compute plane"
+          label={t('stat.compute')}
           value={connected && computeStatus ? computeStatus : '—'}
-          hint={platform.data ? `${platform.data.computeProvider} provider` : 'connect a key to read'}
+          hint={platform.data ? t('stat.compute.hint', { provider: platform.data.computeProvider }) : t('stat.needsKey')}
           tone={computeStatus === 'available' ? 'ok' : computeStatus ? 'warn' : undefined}
         />
       </section>
 
       <section className="portal-layout">
-        <div className="module-grid">{modules.map(([title, description, tag]) => <button className="module-card" key={title}><span className="module-tag">{tag}</span><h2>{title}</h2><p>{description}</p><b>Open <i>→</i></b></button>)}</div>
+        <div className="module-grid">
+          {MODULE_KEYS.map((key) => (
+            <button className="module-card" key={key}>
+              <span className="module-tag">{MODULE_TAGS[key]}</span>
+              <h2>{t(`module.${key}.title` as TranslationKey)}</h2>
+              <p>{t(`module.${key}.body` as TranslationKey)}</p>
+              <b>{t('action.open')} <i>→</i></b>
+            </button>
+          ))}
+        </div>
         <section className="progress-panel">
-          <span className="panel-label">Delivery progress</span>
-          <div className="progress-value"><strong>{overview.progress}%</strong><span>{overview.done}/{overview.total} milestones</span></div>
+          <span className="panel-label">{t('progress.label')}</span>
+          <div className="progress-value">
+            <strong>{overview.progress}%</strong>
+            <span>{t('progress.milestones', { done: overview.done, total: overview.total })}</span>
+          </div>
           <Progress value={overview.progress} />
           <div className="progress-breakdown">
-            <p><span className="key done" />Completed <b>{overview.done}</b></p>
-            <p><span className="key active" />In progress <b>{overview.active}</b></p>
-            <p><span className="key planned" />Planned <b>{overview.total - overview.done}</b></p>
+            <p><span className="key done" />{t('progress.completed')} <b>{overview.done}</b></p>
+            <p><span className="key active" />{t('progress.inProgress')} <b>{overview.active}</b></p>
+            <p><span className="key planned" />{t('progress.planned')} <b>{overview.total - overview.done}</b></p>
           </div>
-          <button className="text-button" onClick={onRoadmap}>Open roadmap <span>→</span></button>
+          <button className="text-button" onClick={onRoadmap}>{t('action.openRoadmap')} <span>→</span></button>
         </section>
       </section>
     </>
@@ -201,6 +235,7 @@ function DeveloperPortal({ overview, onRoadmap, onOpen, onConnect }: { overview:
 }
 
 function DetailPage({ kind, onBack }: { kind: 'rules' | 'architecture'; onBack: () => void }) {
+  const { t } = useTranslation();
   const rules = [
     ['Control / Compute boundary', 'VM4 decides, manages and secures. VM5 performs GPU inference only; normal users never reach a model endpoint directly.'],
     ['ERP remains system of record', 'AI orchestrates approved ERP APIs and never duplicates ERP business rules or writes ERP tables directly.'],
@@ -217,7 +252,7 @@ function DetailPage({ kind, onBack }: { kind: 'rules' | 'architecture'; onBack: 
   ];
   const stack = [
     ['Portal', 'React 19, Vite, TypeScript and the unified AI workspace UI, calling the Gateway with a scoped API key.'],
-    ['Control Plane', 'Go API on port 8080: configuration, migrations, API keys, rate limits, usage/audit outbox and the compute registry.'],
+    ['Control Plane', 'Go API on port 8080: configuration, migrations, API keys, rate limits, usage/audit outbox, assistants, conversations and the compute registry.'],
     ['Compute Plane', 'Ollama in an isolated Docker network with NVIDIA GPU passthrough; qwen2.5:0.5b is the current development smoke-test model.'],
     ['AI data', 'PostgreSQL 16 with pgvector; AI-owned schema applied by service migrations at startup.'],
     ['Cache and events', 'Redis 7 holds rate-limit counters under ai:*. Production reuses existing Redis namespaces and Kafka KRaft topics with ACLs.'],
@@ -228,20 +263,113 @@ function DetailPage({ kind, onBack }: { kind: 'rules' | 'architecture'; onBack: 
     ['Operational guard', 'VM5 exposes no public port, model/provider access passes through VM4, and ERP always continues when Node 4 is unavailable.'],
   ];
   const items = kind === 'rules' ? rules : stack;
-  const intro = kind === 'rules' ? 'These are non-negotiable guardrails. A feature that violates one must be redesigned before implementation.' : 'A truthful view of the local development stack and the enterprise services it is designed to integrate with.';
-  return <section className="detail-page"><div className="detail-intro"><div><p>{intro}</p><span>{kind === 'rules' ? '12 mandatory engineering guardrails' : 'Development runtime plus production integration target'}</span></div><button className="secondary" onClick={onBack}>Back to Developer Portal</button></div><section className="detail-list">{items.map(([title, description], index) => <article className="detail-item" key={title}><span>{String(index + 1).padStart(2, '0')}</span><div><h2>{title}</h2><p>{description}</p></div>{kind === 'rules' && <b>Required</b>}</article>)}</section></section>;
+
+  return (
+    <section className="detail-page">
+      <div className="detail-intro">
+        <div>
+          <p>{kind === 'rules' ? t('detail.rules.intro') : t('detail.architecture.intro')}</p>
+          <span>{kind === 'rules' ? t('detail.rules.count') : t('detail.architecture.count')}</span>
+        </div>
+        <button className="secondary" onClick={onBack}>{t('action.backToPortal')}</button>
+      </div>
+      <p className="source-note">{t('detail.sourceLanguage')}</p>
+      <section className="detail-list">
+        {items.map(([title, description], index) => (
+          <article className="detail-item" key={title}>
+            <span>{String(index + 1).padStart(2, '0')}</span>
+            <div><h2>{title}</h2><p>{description}</p></div>
+            {kind === 'rules' && <b>{t('detail.required')}</b>}
+          </article>
+        ))}
+      </section>
+    </section>
+  );
 }
 
-function Roadmap({ phases, overview, expanded, setExpanded, onUpdate, onAdd }: { phases: Phase[]; overview: Overview; expanded: number | null; setExpanded: (id: number | null) => void; onUpdate: (id: number) => void; onAdd: () => void }) { return <><section className="roadmap-summary"><div><p>Track platform delivery by phase, milestone and operational readiness.</p><div className="summary-stats"><span><b>{overview.progress}%</b> overall delivery</span><span><b>{overview.done}/{overview.total}</b> milestones complete</span><span><b>{overview.active}</b> active phases</span></div></div><button className="primary" onClick={onAdd}>Add phase</button></section><section className="phase-list">{phases.map((phase) => <article className={`phase ${expanded === phase.id ? 'expanded' : ''}`} key={phase.id}><button className="phase-row" onClick={() => setExpanded(expanded === phase.id ? null : phase.id)}><span className="chevron">{expanded === phase.id ? '−' : '+'}</span><span className="phase-title"><b>Phase {String(phase.id).padStart(2, '0')}</b><strong>{phase.title}</strong><small>{phase.detail}</small></span><span className={`status ${phase.status}`}>{phase.status === 'complete' ? 'Complete' : phase.status === 'active' ? 'In progress' : 'Planned'}</span><span className="phase-progress"><Progress value={phase.progress} /><b>{phase.progress}%</b><small>{phase.done}/{phase.total} milestones</small></span></button>{expanded === phase.id && <div className="phase-details"><ol>{phase.sprints.map((sprint, index) => <li className={index < phase.done ? 'completed' : ''} key={sprint}><span>{index < phase.done ? '✓' : String(index + 1).padStart(2, '0')}</span>{sprint}</li>)}</ol><button className="secondary" onClick={() => onUpdate(phase.id)}>Update progress</button></div>}</article>)}</section></>; }
+function Roadmap({ phases, overview, expanded, setExpanded, onUpdate, onAdd }: { phases: Phase[]; overview: Overview; expanded: number | null; setExpanded: (id: number | null) => void; onUpdate: (id: number) => void; onAdd: () => void }) {
+  const { t } = useTranslation();
+  const statusLabel = (status: PhaseStatus) => t(`status.${status}` as TranslationKey);
+
+  return (
+    <>
+      <section className="roadmap-summary">
+        <div>
+          <p>{t('roadmap.intro')}</p>
+          <div className="summary-stats">
+            <span><b>{overview.progress}%</b> {t('roadmap.overall')}</span>
+            <span><b>{overview.done}/{overview.total}</b> {t('roadmap.complete')}</span>
+            <span><b>{overview.active}</b> {t('roadmap.activePhases')}</span>
+          </div>
+        </div>
+        <button className="primary" onClick={onAdd}>{t('action.addPhase')}</button>
+      </section>
+      <p className="source-note">{t('detail.sourceLanguage')}</p>
+      <section className="phase-list">
+        {phases.map((phase) => (
+          <article className={`phase ${expanded === phase.id ? 'expanded' : ''}`} key={phase.id}>
+            <button className="phase-row" onClick={() => setExpanded(expanded === phase.id ? null : phase.id)}>
+              <span className="chevron">{expanded === phase.id ? '−' : '+'}</span>
+              <span className="phase-title">
+                <b>{t('roadmap.phase', { number: String(phase.id).padStart(2, '0') })}</b>
+                <strong>{phase.title}</strong>
+                <small>{phase.detail}</small>
+              </span>
+              <span className={`status ${phase.status}`}>{statusLabel(phase.status)}</span>
+              <span className="phase-progress">
+                <Progress value={phase.progress} />
+                <b>{phase.progress}%</b>
+                <small>{t('progress.milestones', { done: phase.done, total: phase.total })}</small>
+              </span>
+            </button>
+            {expanded === phase.id && (
+              <div className="phase-details">
+                <ol>
+                  {phase.sprints.map((sprint, index) => (
+                    <li className={index < phase.done ? 'completed' : ''} key={sprint}>
+                      <span>{index < phase.done ? '✓' : String(index + 1).padStart(2, '0')}</span>{sprint}
+                    </li>
+                  ))}
+                </ol>
+                <button className="secondary" onClick={() => onUpdate(phase.id)}>{t('action.updateProgress')}</button>
+              </div>
+            )}
+          </article>
+        ))}
+      </section>
+    </>
+  );
+}
+
 function Progress({ value }: { value: number }) { return <span className="progress"><i style={{ width: `${value}%` }} /></span>; }
-function ProgressModal({ phase, onClose, onSave }: { phase: Phase; onClose: () => void; onSave: (value: number) => void }) { const [value, setValue] = useState(phase.progress); return <Modal title={`Update ${phase.title}`} onClose={onClose}><p>Set delivery progress for this phase. Completed milestones will be recalculated.</p><div className="range-row"><input aria-label="Phase progress" type="range" min="0" max="100" step="5" value={value} onChange={(event) => setValue(Number(event.target.value))} /><strong>{value}%</strong></div><div className="modal-actions"><button className="secondary" onClick={onClose}>Cancel</button><button className="primary" onClick={() => onSave(value)}>Save progress</button></div></Modal>; }
+
+function ProgressModal({ phase, onClose, onSave }: { phase: Phase; onClose: () => void; onSave: (value: number) => void }) {
+  const { t } = useTranslation();
+  const [value, setValue] = useState(phase.progress);
+
+  return (
+    <Modal title={t('dialog.progress.title', { name: phase.title })} onClose={onClose}>
+      <p>{t('dialog.progress.body')}</p>
+      <div className="range-row">
+        <input aria-label={t('progress.label')} type="range" min="0" max="100" step="5" value={value} onChange={(event) => setValue(Number(event.target.value))} />
+        <strong>{value}%</strong>
+      </div>
+      <div className="modal-actions">
+        <button className="secondary" onClick={onClose}>{t('action.cancel')}</button>
+        <button className="primary" onClick={() => onSave(value)}>{t('action.saveProgress')}</button>
+      </div>
+    </Modal>
+  );
+}
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 15_000, refetchOnWindowFocus: false } },
 });
 
 createRoot(document.getElementById('root')!).render(
-  <QueryClientProvider client={queryClient}>
-    <App />
-  </QueryClientProvider>,
+  <LanguageProvider>
+    <QueryClientProvider client={queryClient}>
+      <App />
+    </QueryClientProvider>
+  </LanguageProvider>,
 );

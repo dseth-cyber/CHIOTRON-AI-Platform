@@ -165,6 +165,17 @@ This is a development bridge. Once the Identity Service issues JWTs to the porta
 
 **Live figures.** The Developer Portal stat cards read environment, version, capabilities, model availability and compute status from the API. Only the roadmap remains local state — it is a planning artefact, not platform data.
 
+**Languages.** Every string the platform owns goes through `t(key)` in Thai, English, Chinese, Burmese and Japanese, with `formatDate`/`formatNumber` following the active language (ARCHITECTURE-v1 section 10). The choice is stored per browser and defaults to the closest match from `navigator.languages`; `<html lang>` follows it so screen readers and hyphenation behave.
+
+The catalogue is typed from the English keys, so **a missing translation in any language fails the build** rather than silently falling back — verified by deleting one Burmese string and watching `tsc` reject it:
+
+```
+src/i18n.ts(636,7): error TS2741: Property '"chat.error.catalogue.title"' is missing
+  in type '{ ... }' but required in type 'Catalogue'.
+```
+
+Two bodies of text are deliberately **not** translated and are labelled as such in the UI: the twelve governance rules with the ten stack entries, and the roadmap's phase and milestone names. They mirror `docs/ARCHITECTURE-v1.md` and should be translated together with it, by a reviewer who can check the terminology. The Chinese, Japanese and Burmese UI strings are a first pass and want a native review before production.
+
 Type checking is part of the build: `npm run build` runs `tsc --noEmit` first, so a type error fails the image. Dependencies are pinned by `package-lock.json` and installed with `npm ci`.
 
 The next development phase should add identity/JWT middleware, then assistant and conversation APIs on top of the compute registry.

@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { ApiError } from './api';
 import { Modal } from './Modal';
 import { useCredential, useIdentity } from './hooks';
+import { useTranslation } from './LanguageContext';
+import type { TranslationKey } from './i18n';
 
 export const SCOPE_MODELS_READ = 'models:read';
 export const SCOPE_ASSISTANTS_READ = 'assistants:read';
@@ -9,25 +11,31 @@ export const SCOPE_CHAT = 'chat:completions';
 export const SCOPE_ADMIN_KEYS = 'admin:keys';
 export const SCOPE_ADMIN_ASSISTANTS = 'admin:assistants';
 
-const SCOPE_LABELS: Record<string, string> = {
-  [SCOPE_MODELS_READ]: 'Read the model catalogue',
-  [SCOPE_ASSISTANTS_READ]: 'Read the assistant catalogue',
-  [SCOPE_CHAT]: 'Run completions and read own history',
-  [SCOPE_ADMIN_KEYS]: 'Manage API keys',
-  [SCOPE_ADMIN_ASSISTANTS]: 'Manage assistants',
-};
+const KNOWN_SCOPES = [
+  SCOPE_MODELS_READ,
+  SCOPE_ASSISTANTS_READ,
+  SCOPE_CHAT,
+  SCOPE_ADMIN_KEYS,
+  SCOPE_ADMIN_ASSISTANTS,
+] as const;
+
+/** A scope the gateway added but this build does not know is shown verbatim. */
+function isKnownScope(scope: string): scope is (typeof KNOWN_SCOPES)[number] {
+  return (KNOWN_SCOPES as readonly string[]).includes(scope);
+}
 
 /** Sidebar status line: is this browser talking to the Control Plane, and as whom. */
 export function ConnectionBadge({ onConnect }: { onConnect: () => void }) {
+  const { t } = useTranslation();
   const [credential] = useCredential();
   const identity = useIdentity();
 
   if (credential === '') {
     return (
       <div className="connection offline">
-        <span className="live-dot offline" /> Not connected
+        <span className="live-dot offline" /> {t('conn.notConnected')}
         <button className="text-button" onClick={onConnect}>
-          Add API key <span>→</span>
+          {t('conn.addKey')} <span>→</span>
         </button>
       </div>
     );
@@ -35,7 +43,7 @@ export function ConnectionBadge({ onConnect }: { onConnect: () => void }) {
   if (identity.isPending) {
     return (
       <div className="connection">
-        <span className="live-dot pending" /> Checking credential…
+        <span className="live-dot pending" /> {t('conn.checking')}
       </div>
     );
   }
@@ -43,9 +51,9 @@ export function ConnectionBadge({ onConnect }: { onConnect: () => void }) {
     const rejected = identity.error instanceof ApiError && identity.error.unauthenticated;
     return (
       <div className="connection offline">
-        <span className="live-dot offline" /> {rejected ? 'Key rejected' : 'Gateway unreachable'}
+        <span className="live-dot offline" /> {rejected ? t('conn.rejected') : t('conn.unreachable')}
         <button className="text-button" onClick={onConnect}>
-          Change key <span>→</span>
+          {t('action.changeKey')} <span>→</span>
         </button>
       </div>
     );
@@ -53,19 +61,22 @@ export function ConnectionBadge({ onConnect }: { onConnect: () => void }) {
 
   return (
     <div className="connection">
-      <span className="live-dot" /> Connected as <b>{identity.data.name}</b>
+      <span className="live-dot" /> {t('conn.connectedAs')} <b>{identity.data.name}</b>
       <small>
-        {identity.data.scopes.length} scope{identity.data.scopes.length === 1 ? '' : 's'} ·{' '}
-        {identity.data.rateLimitPerMinute}/min
+        {t('conn.summary', {
+          count: identity.data.scopes.length,
+          rate: identity.data.rateLimitPerMinute,
+        })}
       </small>
       <button className="text-button" onClick={onConnect}>
-        Change key <span>→</span>
+        {t('action.changeKey')} <span>→</span>
       </button>
     </div>
   );
 }
 
 export function ConnectDialog({ onClose }: { onClose: () => void }) {
+  const { t } = useTranslation();
   const [credential, setCredential] = useCredential();
   const [draft, setDraft] = useState(credential);
   const identity = useIdentity();
@@ -80,20 +91,12 @@ export function ConnectDialog({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <Modal title="Connect to the AI Gateway" onClose={onClose}>
-      <p>
-        The portal calls the Control Plane with an API key. Paste one minted with{' '}
-        <code>apikey create</code> or from the admin endpoint. It is kept in this tab only and is
-        cleared when the tab closes.
-      </p>
-      <p className="caution">
-        Give the portal the narrowest key that does the job. A browser is not a safe place for{' '}
-        <code>admin:keys</code>. This is a development bridge until the Identity Service issues JWTs
-        to the portal.
-      </p>
+    <Modal title={t('dialog.connect.title')} onClose={onClose}>
+      <p>{t('dialog.connect.intro')}</p>
+      <p className="caution">{t('dialog.connect.caution')}</p>
 
       <label className="field">
-        <span>API key</span>
+        <span>{t('dialog.connect.keyLabel')}</span>
         <input
           type="password"
           className="credential-input"
@@ -109,26 +112,24 @@ export function ConnectDialog({ onClose }: { onClose: () => void }) {
         <div className="scope-list">
           {identity.data.scopes.map((scope) => (
             <span className="scope-chip" key={scope}>
-              {SCOPE_LABELS[scope] ?? scope}
+              {isKnownScope(scope) ? t(`scope.${scope}` as TranslationKey) : scope}
             </span>
           ))}
         </div>
       )}
-      {credential !== '' && identity.isError && (
-        <p className="error-note">{identity.error.message}</p>
-      )}
+      {credential !== '' && identity.isError && <p className="error-note">{identity.error.message}</p>}
 
       <div className="modal-actions">
         {credential !== '' && (
           <button className="secondary" onClick={disconnect}>
-            Disconnect
+            {t('action.disconnect')}
           </button>
         )}
         <button className="secondary" onClick={onClose}>
-          Cancel
+          {t('action.cancel')}
         </button>
         <button className="primary" onClick={save} disabled={draft.trim() === ''}>
-          Save key
+          {t('action.save')}
         </button>
       </div>
     </Modal>
