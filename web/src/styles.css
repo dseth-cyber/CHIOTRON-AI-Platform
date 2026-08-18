@@ -184,6 +184,12 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .panel .field input[type="file"] { padding: 7px 9px; }
 
 
+/* Providers page */
+.section-heading { margin: 32px 0 4px; font-size: 1.05rem; }
+.notice p { margin: 5px 0 0; }
+.providers-hint { color: var(--color-text-faint, #7e97a8); font-size: .76rem; }
+
+
 @media (max-width: 1120px) { .quick-grid { grid-template-columns: repeat(2, 1fr); }.home-columns, .graph-columns, .settings-grid { grid-template-columns: 1fr; }.chat-page { height: auto; }.search-bar { grid-template-columns: 1fr; } }
 
 @media (max-width: 1120px) { .portal-layout { grid-template-columns: 1fr; }.progress-panel { min-height: 250px; }.module-grid { grid-template-columns: repeat(2, 1fr); }.phase-row { grid-template-columns: 26px minmax(180px, 1fr) 100px; }.phase-progress { grid-column: 2 / -1; }.phase-row .phase-progress { margin-top: 6px; } }

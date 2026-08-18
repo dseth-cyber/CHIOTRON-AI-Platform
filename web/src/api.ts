@@ -178,6 +178,52 @@ export type Favorite = {
   createdAt: string;
 };
 
+export type ComputeProvider = {
+  id: string;
+  slug: string;
+  name: string;
+  description?: string;
+  kind: string;
+  baseUrl: string;
+  hasCredential: boolean;
+  credentialHint?: string;
+  /** The most sensitive content that may be sent to this backend. */
+  maxClassification: string;
+  enabled: boolean;
+  timeoutSeconds: number;
+  lastCheckedAt?: string;
+  lastStatus?: string;
+  lastError?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ModelRoute = {
+  id: string;
+  logical: string;
+  provider: string;
+  model: string;
+  default: boolean;
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ProviderRegistry = {
+  providers: ComputeProvider[];
+  routes: ModelRoute[];
+  kinds: string[];
+  classifications: string[];
+  /** False when no encryption key is set, so a credential cannot be stored. */
+  credentialStorage: boolean;
+};
+
+export type ProviderCheck = {
+  status: string;
+  error?: string;
+  models?: { id: string; family?: string }[];
+};
+
 export type Completion = {
   logicalModel: string;
   provider: string;
@@ -312,6 +358,47 @@ export async function purgeDocument(id: string): Promise<void> {
 
 export const searchKnowledge = (query: string, limit?: number) =>
   send<SearchResult>('POST', '/api/v1/knowledge/search', { query, ...(limit ? { limit } : {}) });
+
+export const fetchProviderRegistry = (signal?: AbortSignal) =>
+  get<ProviderRegistry>('/api/v1/admin/providers', signal);
+
+export type ProviderInput = {
+  slug: string;
+  name: string;
+  description?: string;
+  kind: string;
+  baseUrl: string;
+  credential?: string;
+  maxClassification: string;
+  timeoutSeconds?: number;
+};
+
+export const createProvider = (input: ProviderInput) =>
+  send<{ provider: ComputeProvider }>('POST', '/api/v1/admin/providers', input);
+
+/**
+ * Sends only the fields being changed.
+ *
+ * The credential is omitted rather than sent empty when it is not being
+ * replaced: the portal is never given the stored value, so it has nothing to
+ * send back, and an empty string would wipe it.
+ */
+export const updateProvider = (slug: string, patch: Partial<ProviderInput> & { enabled?: boolean }) =>
+  send<{ provider: ComputeProvider }>('PATCH', `/api/v1/admin/providers/${encodeURIComponent(slug)}`, patch);
+
+export async function deleteProvider(slug: string): Promise<void> {
+  await send('DELETE', `/api/v1/admin/providers/${encodeURIComponent(slug)}`);
+}
+
+export const checkProvider = (slug: string) =>
+  send<ProviderCheck>('POST', `/api/v1/admin/providers/${encodeURIComponent(slug)}/check`);
+
+export const saveRoute = (route: { logical: string; provider: string; model: string; default?: boolean }) =>
+  send<{ route: ModelRoute }>('PUT', '/api/v1/admin/routes', route);
+
+export async function deleteRoute(logical: string): Promise<void> {
+  await send('DELETE', `/api/v1/admin/routes/${encodeURIComponent(logical)}`);
+}
 
 export async function setFavorite(
   kind: FavoriteKind,

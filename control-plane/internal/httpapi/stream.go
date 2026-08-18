@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/chiotron/ai-control-plane/internal/agent"
 	"github.com/chiotron/ai-control-plane/internal/audit"
 	"github.com/chiotron/ai-control-plane/internal/auth"
 	"github.com/chiotron/ai-control-plane/internal/provider"
@@ -119,6 +120,12 @@ func (d Deps) writeChatError(w http.ResponseWriter, err error, route provider.Ro
 	switch {
 	case errors.Is(err, provider.ErrUnknownModel):
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+	case errors.Is(err, agent.ErrEgressRefused):
+		// A policy refusal, not an outage. Reporting it as a bad gateway would
+		// send an operator to debug a provider that is working perfectly, and the
+		// caller needs the reason to know it is not going to succeed on a retry.
+		d.Log.Warn("egress refused", "provider", route.Provider, "error", err)
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
 	case errors.Is(err, provider.ErrUnavailable):
 		// The Control Plane is fine; the compute plane is not.
 		d.Log.Error("compute call failed", "provider", route.Provider, "model", route.Model, "error", err)

@@ -10,6 +10,7 @@ import {
   SCOPE_ASSISTANTS_READ,
   SCOPE_CHAT,
   SCOPE_KNOWLEDGE_READ,
+  SCOPE_ADMIN_KEYS,
 } from './Connection';
 import { LanguageProvider, LanguageSwitcher, useTranslation } from './LanguageContext';
 import type { TranslationKey } from './i18n';
@@ -26,6 +27,7 @@ import { Settings } from './pages/Settings';
 import { SharedChats } from './pages/SharedChats';
 import { Analyze } from './pages/Analyze';
 import { Create } from './pages/Create';
+import { Providers } from './pages/Providers';
 
 type PhaseStatus = 'complete' | 'active' | 'planned';
 /**
@@ -62,6 +64,7 @@ const initialPhases: Phase[] = [
   { id: 11, title: 'Monitoring & Operations', detail: 'Metrics, tracing, logging, usage dashboards and runbooks', progress: 80, done: 4, total: 5, status: 'active', sprints: ['Prometheus metrics contract', 'GPU and VRAM exporter', 'Usage and cost dashboards', 'Alerting, backup and disaster-recovery runbooks', 'OpenTelemetry traces and Loki logs'], blocker: 'loki' },
   { id: 12, title: 'Multi-Compute Scaling', detail: 'Route workloads across GPU VMs and provider backends', progress: 0, done: 0, total: 5, status: 'planned', sprints: ['Compute node registry', 'Health-aware model routing', 'Queue and back-pressure policy', 'vLLM/NIM provider adapters', 'Multi-node load and failover testing'], blocker: 'gpu' },
   { id: 13, title: 'High Availability & Kubernetes', detail: 'Production resilience, recovery and Kubernetes-ready deployment', progress: 0, done: 0, total: 6, status: 'planned', sprints: ['VM4 horizontal scaling design', 'Database recovery test', 'Compute-plane failure drill', 'Kubernetes manifests and secrets strategy', 'Rolling deployment and rollback plan', 'Capacity and disaster-recovery validation'], blocker: 'cluster' },
+  { id: 14, title: 'Provider Registry & Low-Code Config', detail: 'Database-owned model routing, cloud provider adapters, egress ceilings and admin-editable policy', progress: 63, done: 5, total: 8, status: 'active', sprints: ['Provider and route registry owned by the database', 'OpenAI-compatible and Anthropic adapters', 'Encrypted provider credentials at rest', 'Classification egress ceiling per provider', 'Admin UI for providers and model routing', 'Platform settings table and admin editor', 'Prompt template registry', 'Vector store and storage provider adapters'] },
 ];
 
 const MODULE_KEYS = ['api', 'module', 'event', 'map', 'flags', 'prompts'] as const;
@@ -105,6 +108,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { view: 'portal', mark: 'DP', label: 'nav.developerPortal' },
       { view: 'roadmap', mark: 'RM', label: 'nav.roadmap' },
+      { view: 'providers', mark: 'PV', label: 'nav.providers', scopes: [SCOPE_ADMIN_KEYS], reason: 'nav.providersDisabled' },
       { view: 'settings', mark: 'ST', label: 'nav.settings' },
     ],
   },
@@ -206,6 +210,7 @@ function App() {
         {view === 'search' && <Search />}
         {view === 'favorites' && <Favorites onNavigate={navigate} />}
         {view === 'shared' && <SharedChats onNavigate={navigate} />}
+        {view === 'providers' && <Providers />}
         {view === 'settings' && <Settings onConnect={() => setShowConnect(true)} />}
         {view === 'portal' && <DeveloperPortal overview={overview} onRoadmap={() => setView('roadmap')} onOpen={setView} onConnect={() => setShowConnect(true)} />}
         {view === 'roadmap' && <Roadmap phases={phases} overview={overview} expanded={expanded} setExpanded={setExpanded} onUpdate={setShowUpdate} onAdd={() => setShowAdd(true)} />}

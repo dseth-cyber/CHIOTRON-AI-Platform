@@ -42,15 +42,19 @@ type Config struct {
 	// Knowledge platform. The storage provider of record and the classification
 	// policy are open decisions (ARCHITECTURE-v1 section 13 items 5 and 6), so
 	// both are configuration and the code names neither.
-	StorageRoot          string
-	EmbeddingModel       string
-	EmbeddingDimensions  int
-	ClassificationLevels []string
-	ChunkSize            int
-	ChunkOverlap         int
-	MaxDocumentBytes     int
-	IngestionInterval    time.Duration
-	IngestionBatch       int
+	StorageRoot string
+	// CredentialEncryptionKey seals provider API keys at rest. It stays an
+	// environment variable on purpose: a key stored in the database it protects
+	// would protect nothing.
+	CredentialEncryptionKey string
+	EmbeddingModel          string
+	EmbeddingDimensions     int
+	ClassificationLevels    []string
+	ChunkSize               int
+	ChunkOverlap            int
+	MaxDocumentBytes        int
+	IngestionInterval       time.Duration
+	IngestionBatch          int
 
 	// Agent planner policy. Retrieval depth and the score a round must beat are
 	// tuning, not business logic, so both are configuration.
@@ -90,17 +94,18 @@ type Config struct {
 // complete report instead of one error per restart.
 func Load(getenv func(string) string, version string) (Config, error) {
 	cfg := Config{
-		HTTPAddr:        stringVar(getenv, "HTTP_ADDR", ":8080"),
-		DatabaseURL:     stringVar(getenv, "AI_DATABASE_URL", ""),
-		RedisAddr:       stringVar(getenv, "REDIS_ADDR", ""),
-		RedisPassword:   stringVar(getenv, "REDIS_PASSWORD", ""),
-		ComputeProvider: stringVar(getenv, "COMPUTE_PROVIDER", "ollama"),
-		OllamaBaseURL:   stringVar(getenv, "OLLAMA_BASE_URL", "http://ollama:11434"),
-		AllowedOrigins:  listVar(getenv, "CORS_ALLOWED_ORIGINS", "http://localhost:5173"),
-		ModelRoutes:     stringVar(getenv, "MODEL_ROUTES", "default=ollama/qwen2.5:0.5b"),
-		DefaultModel:    stringVar(getenv, "DEFAULT_MODEL", "default"),
-		StorageRoot:     stringVar(getenv, "STORAGE_ROOT", "/var/lib/chiotron/documents"),
-		EmbeddingModel:  stringVar(getenv, "EMBEDDING_MODEL", "nomic-embed-text"),
+		HTTPAddr:                stringVar(getenv, "HTTP_ADDR", ":8080"),
+		DatabaseURL:             stringVar(getenv, "AI_DATABASE_URL", ""),
+		RedisAddr:               stringVar(getenv, "REDIS_ADDR", ""),
+		RedisPassword:           stringVar(getenv, "REDIS_PASSWORD", ""),
+		ComputeProvider:         stringVar(getenv, "COMPUTE_PROVIDER", "ollama"),
+		OllamaBaseURL:           stringVar(getenv, "OLLAMA_BASE_URL", "http://ollama:11434"),
+		AllowedOrigins:          listVar(getenv, "CORS_ALLOWED_ORIGINS", "http://localhost:5173"),
+		ModelRoutes:             stringVar(getenv, "MODEL_ROUTES", "default=ollama/qwen2.5:0.5b"),
+		DefaultModel:            stringVar(getenv, "DEFAULT_MODEL", "default"),
+		StorageRoot:             stringVar(getenv, "STORAGE_ROOT", "/var/lib/chiotron/documents"),
+		CredentialEncryptionKey: stringVar(getenv, "CONFIG_ENCRYPTION_KEY", ""),
+		EmbeddingModel:          stringVar(getenv, "EMBEDDING_MODEL", "nomic-embed-text"),
 		ClassificationLevels: listVar(getenv, "CLASSIFICATION_LEVELS",
 			"public,internal,confidential,restricted"),
 		ServiceName:    stringVar(getenv, "OTEL_SERVICE_NAME", "ai-control-plane"),

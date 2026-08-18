@@ -11,6 +11,7 @@ import {
   fetchIdentity,
   fetchModels,
   fetchPlatform,
+  fetchProviderRegistry,
   readCredential,
   setFavorite,
   writeCredential,
@@ -24,6 +25,7 @@ import {
   type Identity,
   type ModelCatalogue,
   type Platform,
+  type ProviderRegistry,
 } from './api';
 
 // React Query defaults its error type to `unknown`. Its Register interface is
@@ -184,6 +186,28 @@ export function useToggleFavorite(): (
     },
     [queryClient],
   );
+}
+
+export function useProviderRegistry(enabled: boolean): UseQueryResult<ProviderRegistry, Error> {
+  const [credential] = useCredential();
+  return useQuery<ProviderRegistry, Error>({
+    queryKey: ['provider-registry', credential],
+    queryFn: ({ signal }) => fetchProviderRegistry(signal),
+    enabled: enabled && credential !== '',
+    retry: retryUnlessClientError,
+  });
+}
+
+/** Refreshes the routing table after a provider or route changes. */
+export function useRefreshProviders(): () => void {
+  const queryClient = useQueryClient();
+  return useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: ['provider-registry'] });
+    // The model catalogue and compute health are both derived from the routing
+    // table, so a change here makes both of them stale.
+    void queryClient.invalidateQueries({ queryKey: ['models'] });
+    void queryClient.invalidateQueries({ queryKey: ['compute-health'] });
+  }, [queryClient]);
 }
 
 /** Refreshes the history list after a turn changes a title or its counters. */

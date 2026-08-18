@@ -50,6 +50,13 @@ type stubCompleter struct {
 	answer   string
 	err      error
 	messages []provider.Message
+	// route is what Resolve reports. The zero value has no ceiling, so tests
+	// that are not about egress are unaffected by it.
+	route provider.Route
+}
+
+func (s *stubCompleter) Resolve(string) (provider.LLM, provider.Route, error) {
+	return nil, s.route, nil
 }
 
 func (s *stubCompleter) Chat(_ context.Context, _ string, req provider.ChatRequest) (provider.ChatResponse, provider.Route, error) {
@@ -327,4 +334,53 @@ func hasStep(steps []Step, kind, outcome string) bool {
 		}
 	}
 	return false
+}
+
+// The egress ceiling is the guard that makes a cloud provider safe to configure
+// at all: retrieval filters by what the caller may read, and this asks the
+// different question of what the provider may be told.
+
+func TestAnswerRefusesContextAboveTheProviderCeiling(t *testing.T) {
+	retriever := &stubRetriever{rounds: [][]knowledge.Hit{{
+		classifiedHit(1, "doc-a", "Board minutes", 0.9, "internal"),
+	}}}
+	completer := &stubCompleter{
+		answer: "should never be produced",
+		route:  provider.Route{Provider: "openai", MaxClassification: "public"},
+	}
+	orchestrator := testOrchestrator(t, retriever, completer, 0.016)
+
+	_, err := orchestrator.Answer(context.Background(), testRequest(RetrievalAuto, "what did the board decide"))
+	if !errors.Is(err, ErrEgressRefused) {
+		t.Fatalf("Answer() error = %v, want ErrEgressRefused", err)
+	}
+	// The point of the guard is that nothing was sent, not that the answer was
+	// thrown away after the fact.
+	if len(completer.messages) != 0 {
+		t.Fatalf("internal context reached the provider anyway: %d messages", len(completer.messages))
+	}
+}
+
+func TestAnswerProceedsWhenTheContextIsWithinTheCeiling(t *testing.T) {
+	// An internal-cleared caller whose question retrieves only public passages
+	// must still be answered by a public-only provider.
+	retriever := &stubRetriever{rounds: [][]knowledge.Hit{{
+		classifiedHit(1, "doc-a", "Public handbook", 0.9, "public"),
+	}}}
+	completer := &stubCompleter{
+		answer: "the handbook says this [1]",
+		route:  provider.Route{Provider: "openai", MaxClassification: "public"},
+	}
+	orchestrator := testOrchestrator(t, retriever, completer, 0.016)
+
+	answer, err := orchestrator.Answer(context.Background(), testRequest(RetrievalAuto, "what does the handbook say"))
+	if err != nil {
+		t.Fatalf("Answer() returned error: %v", err)
+	}
+	if answer.Content == "" {
+		t.Fatal("Answer() produced no content")
+	}
+	if len(completer.messages) == 0 {
+		t.Fatal("a permitted call never reached the provider")
+	}
 }

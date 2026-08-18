@@ -14,6 +14,7 @@ export type View =
   | 'search'
   | 'favorites'
   | 'shared'
+  | 'providers'
   | 'settings'
   | 'portal'
   | 'roadmap'

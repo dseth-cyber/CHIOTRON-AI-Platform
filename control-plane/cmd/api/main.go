@@ -30,6 +30,7 @@ import (
 	"github.com/chiotron/ai-control-plane/internal/assistant"
 	"github.com/chiotron/ai-control-plane/internal/audit"
 	"github.com/chiotron/ai-control-plane/internal/auth"
+	computeplane "github.com/chiotron/ai-control-plane/internal/compute"
 	"github.com/chiotron/ai-control-plane/internal/config"
 	"github.com/chiotron/ai-control-plane/internal/conversation"
 	"github.com/chiotron/ai-control-plane/internal/favorite"
@@ -39,9 +40,9 @@ import (
 	"github.com/chiotron/ai-control-plane/internal/mcp"
 	"github.com/chiotron/ai-control-plane/internal/migrate"
 	"github.com/chiotron/ai-control-plane/internal/migrations"
-	"github.com/chiotron/ai-control-plane/internal/provider"
 	"github.com/chiotron/ai-control-plane/internal/provider/ollama"
 	"github.com/chiotron/ai-control-plane/internal/ratelimit"
+	"github.com/chiotron/ai-control-plane/internal/secret"
 	"github.com/chiotron/ai-control-plane/internal/storage"
 	"github.com/chiotron/ai-control-plane/internal/store"
 	"github.com/chiotron/ai-control-plane/internal/telemetry"
@@ -109,10 +110,30 @@ func run() error {
 	}
 	defer func() { _ = redisClient.Close() }()
 
-	compute, err := buildComputeRegistry(cfg, log)
+	sealer, err := secret.NewSealer(cfg.CredentialEncryptionKey)
 	if err != nil {
 		return err
 	}
+	if !sealer.Enabled() {
+		log.Warn("credential encryption is not configured; providers needing an API key cannot be added",
+			"fix", "set CONFIG_ENCRYPTION_KEY to a base64 32-byte value")
+	}
+
+	providers := computeplane.NewStore(pool, sealer)
+	// An existing deployment keeps working without re-entering what is already in
+	// its environment. It runs only against an empty table: after that the
+	// database is the source of truth, because two places to change one thing is
+	// one too many.
+	if err := providers.Seed(ctx, cfg.ComputeProvider, cfg.OllamaBaseURL,
+		cfg.ModelRoutes, cfg.DefaultModel, log); err != nil {
+		return err
+	}
+	live := computeplane.NewLive(providers, log)
+	if err := live.Reload(ctx); err != nil {
+		return err
+	}
+	log.Info("compute registry ready",
+		"defaultModel", live.DefaultModel(), "routes", live.Routes())
 
 	knowledgeDeps, err := buildKnowledge(ctx, cfg, pool, tel.Metrics, log)
 	if err != nil {
@@ -120,27 +141,30 @@ func run() error {
 	}
 
 	limiter := ratelimit.New(redisClient)
-	agentDeps, err := buildAgent(ctx, cfg, pool, compute, knowledgeDeps, limiter, tel.Metrics, log)
+	agentDeps, err := buildAgent(ctx, cfg, pool, live, knowledgeDeps, limiter, tel.Metrics, log)
 	if err != nil {
 		return err
 	}
 
 	keys := auth.NewStore(pool)
 	handler := httpapi.NewRouter(httpapi.Deps{
-		Config:        cfg,
-		Log:           log,
-		Metrics:       tel.MetricsHandler,
-		Compute:       compute,
-		Auth:          keys,
-		Keys:          keys,
-		Limiter:       limiter,
-		Audit:         audit.NewRecorder(pool, log),
-		Assistants:    assistant.NewStore(pool),
-		Conversations: conversation.NewStore(pool, cfg.PersistPrompts),
-		Knowledge:     knowledgeDeps,
-		Agent:         agentDeps,
-		Favorites:     favorite.NewStore(pool),
-		Instruments:   tel.Metrics,
+		Config:            cfg,
+		Log:               log,
+		Metrics:           tel.MetricsHandler,
+		Compute:           live,
+		Auth:              keys,
+		Keys:              keys,
+		Limiter:           limiter,
+		Audit:             audit.NewRecorder(pool, log),
+		Assistants:        assistant.NewStore(pool),
+		Conversations:     conversation.NewStore(pool, cfg.PersistPrompts),
+		Knowledge:         knowledgeDeps,
+		Agent:             agentDeps,
+		Favorites:         favorite.NewStore(pool),
+		Providers:         providers,
+		ReloadCompute:     live,
+		CredentialStorage: sealer.Enabled(),
+		Instruments:       tel.Metrics,
 		Checkers: []httpapi.Checker{
 			httpapi.CheckerFunc{DependencyName: "postgres", Probe: pool.Ping},
 			httpapi.CheckerFunc{DependencyName: "redis", Probe: func(ctx context.Context) error {
@@ -243,7 +267,7 @@ func buildKnowledge(ctx context.Context, cfg config.Config, pool *pgxpool.Pool,
 // implementation this build does not have is refused here, where an operator can
 // see it, rather than on somebody's first question.
 func buildAgent(ctx context.Context, cfg config.Config, pool *pgxpool.Pool,
-	compute *provider.Registry, knowledgeDeps httpapi.Knowledge,
+	compute httpapi.ComputeRegistry, knowledgeDeps httpapi.Knowledge,
 	limiter *ratelimit.Limiter, metrics *telemetry.Metrics, log *slog.Logger) (httpapi.Agent, error) {
 
 	policy, err := agent.NewPolicy(cfg.AgentMaxSteps, cfg.AgentTopK, cfg.AgentMinScore, cfg.AgentConflictMargin)
@@ -454,26 +478,4 @@ func runAPIKey(args []string) error {
 		record.MaxClassification, record.RateLimitPerMinute, secret)
 	fmt.Fprintln(os.Stderr, "Store the secret now. It cannot be retrieved again.")
 	return nil
-}
-
-// buildComputeRegistry wires the configured provider adapters and validates the
-// routing table. It never probes the compute plane: VM5 may legitimately be
-// down at startup, and that must not stop the Control Plane from serving
-// (ARCHITECTURE-v1 section 9).
-func buildComputeRegistry(cfg config.Config, log *slog.Logger) (*provider.Registry, error) {
-	if cfg.ComputeProvider != "ollama" {
-		return nil, fmt.Errorf("COMPUTE_PROVIDER %q has no adapter yet; only ollama is implemented", cfg.ComputeProvider)
-	}
-
-	routes, err := provider.ParseRoutes(cfg.ModelRoutes)
-	if err != nil {
-		return nil, err
-	}
-	registry, err := provider.NewRegistry(routes, cfg.DefaultModel, ollama.New(cfg.OllamaBaseURL, cfg.ComputeTimeout))
-	if err != nil {
-		return nil, err
-	}
-
-	log.Info("compute registry ready", "defaultModel", registry.DefaultModel(), "routes", registry.Routes())
-	return registry, nil
 }

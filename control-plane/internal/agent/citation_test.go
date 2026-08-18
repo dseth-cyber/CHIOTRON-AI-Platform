@@ -18,6 +18,14 @@ func hitWithVector(chunkID int64, documentID, title string, ordinal int, score, 
 	}
 }
 
+// classifiedHit is a hit carrying a classification, for the egress tests. The
+// other helpers leave it empty, which reads as unrestricted.
+func classifiedHit(chunkID int64, documentID, title string, score float64, classification string) knowledge.Hit {
+	record := hit(chunkID, documentID, title, 0, score)
+	record.Classification = classification
+	return record
+}
+
 // Multi-round retrieval returns overlapping chunks by design. Offering the same
 // passage twice would let the model cite two numbers for one source.
 func TestCitationsDeduplicateChunks(t *testing.T) {

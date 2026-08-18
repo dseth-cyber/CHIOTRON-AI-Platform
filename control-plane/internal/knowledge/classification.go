@@ -53,6 +53,18 @@ func (p Policy) Levels() []string { return append([]string(nil), p.levels...) }
 func (p Policy) Lowest() string { return p.levels[0] }
 
 // Normalise validates a level and returns its canonical form.
+// Least is the least sensitive level on the ladder.
+//
+// It is the safe default wherever a caller supplies no classification: guessing
+// upward hides content from people entitled to it, guessing downward exposes
+// it, and only one of those is recoverable.
+func (p Policy) Least() string {
+	if len(p.levels) == 0 {
+		return ""
+	}
+	return p.levels[0]
+}
+
 func (p Policy) Normalise(level string) (string, error) {
 	canonical := strings.ToLower(strings.TrimSpace(level))
 	if _, known := p.rank[canonical]; !known {

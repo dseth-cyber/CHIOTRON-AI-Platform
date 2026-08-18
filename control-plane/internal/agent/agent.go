@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -25,6 +26,10 @@ const (
 	OutcomeSuccess = "success"
 	OutcomeSkipped = "skipped"
 	OutcomeFailure = "failure"
+	// OutcomeDenied is a step the platform refused on policy grounds rather than
+	// one that was attempted and failed. The trace has to tell them apart: a
+	// refusal is a decision somebody may need to justify.
+	OutcomeDenied = "denied"
 )
 
 // Step is one recorded action, so an answer can be explained after the fact.
@@ -82,7 +87,14 @@ type Embedder interface {
 // never names a provider.
 type Completer interface {
 	Chat(ctx context.Context, logical string, req provider.ChatRequest) (provider.ChatResponse, provider.Route, error)
+	// Resolve reports which route a logical model uses without calling it, so
+	// the egress ceiling can be checked before any content leaves the platform.
+	Resolve(logical string) (provider.LLM, provider.Route, error)
 }
+
+// ErrEgressRefused reports that the assembled context is more sensitive than
+// the provider chosen to answer it may receive.
+var ErrEgressRefused = errors.New("provider clearance too low for the retrieved context")
 
 // Orchestrator plans and executes a grounded answer.
 type Orchestrator struct {
@@ -149,7 +161,11 @@ func (o *Orchestrator) Answer(ctx context.Context, request Request) (Answer, err
 
 	response, route, err := o.synthesise(ctx, request, hits, citations, toolOutput, answer.Conflicted, addStep)
 	if err != nil {
-		addStep(StepSynthesise, "model call failed", OutcomeFailure, nil, 0)
+		// A refusal already recorded its own step saying why. Adding "model call
+		// failed" after it would describe a call that never happened.
+		if !errors.Is(err, ErrEgressRefused) {
+			addStep(StepSynthesise, "model call failed", OutcomeFailure, nil, 0)
+		}
 		answer.Steps = steps
 		return answer, err
 	}
@@ -274,6 +290,27 @@ func (o *Orchestrator) runTools(ctx context.Context, request Request, steps *[]S
 }
 
 // synthesise builds the prompt and calls the model.
+// checkEgress refuses a route whose provider may not see the most sensitive
+// passage in the context.
+//
+// The comparison is against the highest classification actually retrieved, not
+// the caller's clearance: a confidential-cleared user whose question retrieves
+// only public passages should still get an answer from a public-only provider.
+func (o *Orchestrator) checkEgress(logical string, citations []Citation) error {
+	_, route, err := o.Completer.Resolve(logical)
+	if err != nil {
+		return err
+	}
+	ladder := o.Classes.Levels()
+	for _, citation := range citations {
+		if !route.Permits(ladder, citation.Classification) {
+			return fmt.Errorf("%w: %q may be sent %s at most, but the answer draws on %s content",
+				ErrEgressRefused, route.Provider, route.MaxClassification, citation.Classification)
+		}
+	}
+	return nil
+}
+
 func (o *Orchestrator) synthesise(ctx context.Context, request Request, hits []knowledge.Hit,
 	citations []Citation, toolOutput string, conflicted bool,
 	addStep func(kind, summary, outcome string, detail map[string]any, latency time.Duration)) (provider.ChatResponse, provider.Route, error) {
@@ -317,6 +354,17 @@ func (o *Orchestrator) synthesise(ctx context.Context, request Request, hits []k
 		messages = append(messages, provider.Message{Role: "system", Content: strings.Join(instructions, "\n\n")})
 	}
 	messages = append(messages, provider.Message{Role: "user", Content: body.String()})
+
+	// The egress ceiling is checked here, after the context is assembled and
+	// before a single byte is sent. Retrieval already filtered by what the
+	// *caller* may read; this asks the different question of what the *provider*
+	// may be told. Without it, pointing a route at a cloud API would silently
+	// turn permission-aware retrieval into a data export.
+	if err := o.checkEgress(request.Assistant.LogicalModel, citations); err != nil {
+		addStep(StepSynthesise, "refused: retrieved context exceeds the provider's clearance",
+			OutcomeDenied, map[string]any{"error": err.Error()}, 0)
+		return provider.ChatResponse{}, provider.Route{}, err
+	}
 
 	callStart := time.Now()
 	response, route, err := o.Completer.Chat(ctx, request.Assistant.LogicalModel, provider.ChatRequest{

@@ -33,13 +33,28 @@ type CheckerFunc struct {
 func (c CheckerFunc) Name() string                    { return c.DependencyName }
 func (c CheckerFunc) Check(ctx context.Context) error { return c.Probe(ctx) }
 
+// ComputeRegistry is the routing surface the handlers use.
+//
+// It is an interface rather than *provider.Registry because the live registry
+// can be rebuilt while the process serves: an operator changing a route from
+// the Admin UI must not need a restart (ARCHITECTURE-v1 section 46).
+type ComputeRegistry interface {
+	Resolve(logical string) (provider.LLM, provider.Route, error)
+	Chat(ctx context.Context, logical string, req provider.ChatRequest) (provider.ChatResponse, provider.Route, error)
+	ChatStream(ctx context.Context, logical string, req provider.ChatRequest,
+		emit func(provider.Chunk) error) (provider.ChatResponse, provider.Route, error)
+	DefaultModel() string
+	Routes() []provider.Route
+	Providers() []provider.LLM
+}
+
 // Deps is everything the router needs from the rest of the process.
 type Deps struct {
 	Config        config.Config
 	Log           *slog.Logger
 	Metrics       http.Handler
 	Checkers      []Checker
-	Compute       *provider.Registry
+	Compute       ComputeRegistry
 	Auth          Authenticator
 	Keys          KeyAdmin
 	Limiter       RateLimiter
@@ -49,6 +64,12 @@ type Deps struct {
 	Knowledge     Knowledge
 	Agent         Agent
 	Favorites     FavoriteStore
+	// Providers is the model-routing registry. ReloadCompute applies a change to
+	// the running process, and CredentialStorage reports whether a provider
+	// credential can be stored at all, so the UI can say why not.
+	Providers         ProviderAdmin
+	ReloadCompute     Reloader
+	CredentialStorage bool
 	// Instruments records platform metrics. Metrics above is the scrape handler
 	// that exposes them. Both are optional: losing a metric must not stop the
 	// platform serving requests.
@@ -153,6 +174,7 @@ func NewRouter(d Deps) http.Handler {
 	registerKnowledge(mux, d)
 	registerAgent(mux, d)
 	registerFavorites(mux, d)
+	registerProviders(mux, d)
 	registerAdmin(mux, d)
 
 	// Ordering matters, outermost first:

@@ -52,6 +52,10 @@ Ollama and model credentials are deliberately never exposed to browsers.
 | `GET /api/v1/tools` | Tools the caller may actually call. Needs `tools:read`. |
 | `POST /api/v1/agent/answer` | Grounded answer with citations and a run trace. Needs `agent:run`. |
 | `GET /api/v1/agent/runs/{id}` | The trace for one run. Needs `agent:run`. |
+| `GET /api/v1/admin/providers` | Providers, routes, adapter kinds and classification levels. Needs `admin:keys`. |
+| `POST/PATCH/DELETE /api/v1/admin/providers[/{slug}]` | Add, edit or remove a model backend. Needs `admin:keys`. |
+| `POST /api/v1/admin/providers/{slug}/check` | Test a provider's endpoint and credential. Needs `admin:keys`. |
+| `PUT /api/v1/admin/routes`, `DELETE /api/v1/admin/routes/{logical}` | Point a logical model at a provider. Needs `admin:keys`. |
 | `GET/POST /api/v1/admin/api-keys` | List and mint API keys. Needs `admin:keys`. |
 | `POST /api/v1/admin/assistants` | Create an assistant. Needs `admin:assistants`. |
 | `POST /api/v1/admin/api-keys/{id}/revoke` | Revoke a key. Needs `admin:keys`. |
@@ -87,18 +91,39 @@ Every model call writes a `usage_events` row and every denied or administrative 
 
 Writing an audit row never fails the request that produced it — losing the action is worse than losing its audit line, and the failure is still logged at error level.
 
+## Model providers and routing
+
+Which backend answers is a row in the database, not an environment variable (ARCHITECTURE-v1 sections 46 and 53). Providers and routes are managed from the portal's **Providers** page or the admin endpoints above, and a change applies to the running process — the registry pointer is swapped under an atomic, so in-flight requests finish against the table they started with and nothing needs a restart.
+
+Two adapters cover most of the market:
+
+| Kind | Backends |
+|---|---|
+| `ollama` | The local compute plane |
+| `openai-compatible` | OpenAI, Azure OpenAI, Groq, Together, OpenRouter, DeepSeek, Mistral, **vLLM, NVIDIA NIM**, LM Studio |
+| `anthropic` | The Messages API, which is not OpenAI-compatible and needs its own adapter |
+
+This is what makes development without a GPU possible: point `default` at `openai/gpt-4o-mini` from the Providers page, exercise chat, streaming, RAG and the agent end to end, then point it back at Ollama. No code changes, no redeploy.
+
+**Credentials are sealed with AES-GCM** under `CONFIG_ENCRYPTION_KEY`, which stays an environment variable because a key stored in the database it protects would protect nothing. Generate one with `openssl rand -base64 32`. Without it, providers that need no credential still work and providers that need one **cannot be created** — storing a key in the clear is deliberately not offered. No endpoint ever returns a credential; the UI gets `hasCredential` and the last four characters.
+
+### The egress ceiling
+
+Permission-aware retrieval answers *what may this caller read*. Pointing a route at a hosted API raises a different question — *what may this provider be told* — and nothing in the platform asked it until this work. Without a ceiling, adding a cloud provider would silently turn RAG into a data export.
+
+Every provider carries a `max_classification`. After the agent assembles its context and **before any bytes are sent**, the run is refused if any retrieved passage sits above that ceiling. The comparison is against what was actually retrieved rather than the caller's clearance, so a confidential-cleared user whose question happens to draw only on public passages is still answered by a public-only provider.
+
+New providers default to the **least sensitive** level. A loose default is the one nobody comes back to tighten.
+
+Verified against the running platform: with `openai` at `public`, an agent question drawing on `internal` documents was refused with `403` and the run trace recorded a `denied` step; nothing reached the network. Raising the ceiling to `internal` let the same question through, and the request genuinely arrived at `api.openai.com`, which rejected the deliberately fake key with a `401`. The ceiling was the only thing standing between the corpus and the internet.
+
+The ceiling governs what the platform has classified. It **cannot** govern what a user types into a chat box, and the Providers page says so: on a route pointing at an external provider, anything typed leaves the building.
+
 ## Compute plane
 
 Business code depends on the `provider.LLM` interface, never on a vendor SDK, so replacing Ollama with vLLM, NIM or an external API is an adapter plus configuration change (ARCHITECTURE-v1 section 4). Only the Ollama adapter exists today; any other `COMPUTE_PROVIDER` fails at startup with a clear message rather than silently doing nothing.
 
-Callers name a **logical model**; `MODEL_ROUTES` decides which provider and upstream model serves it:
-
-```
-MODEL_ROUTES=default=ollama/qwen2.5:0.5b,fast=ollama/qwen2.5:0.5b
-DEFAULT_MODEL=default
-```
-
-The provider and model are split on the first slash, so upstream names may contain colons. A route naming an unregistered provider, a duplicate logical id, or a `DEFAULT_MODEL` with no route stops the process at startup instead of failing on a user's first request.
+Callers name a **logical model** and the registry decides which provider and upstream model serves it. `COMPUTE_PROVIDER`, `OLLAMA_BASE_URL`, `MODEL_ROUTES` and `DEFAULT_MODEL` seed that table on first start against an empty database, so an existing deployment keeps working without re-entering what its environment already held. **After the seed, the database is the source of truth and those variables are ignored** — two places to change one thing is one too many.
 
 **Failure isolation is deliberate.** The compute plane is not part of `/readyz`: losing VM5 degrades model calls only and the Control Plane stays ready (ARCHITECTURE-v1 section 9). With Ollama unreachable, `/readyz` still returns `200`, `/api/v1/compute/health` reports `unavailable` with the underlying reason, `/api/v1/models` marks routes unavailable, and a chat call returns `503` — never a Control Plane `500`.
 

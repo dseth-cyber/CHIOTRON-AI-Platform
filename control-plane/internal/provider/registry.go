@@ -17,6 +17,14 @@ type Route struct {
 	Logical  string `json:"logical"`
 	Provider string `json:"provider"`
 	Model    string `json:"model"`
+	// MaxClassification is the most sensitive content the provider behind this
+	// route may be sent. It travels with the route rather than being looked up
+	// separately, so no call site can resolve a model and forget to ask.
+	//
+	// Empty means unrestricted, which is what routes parsed from the legacy
+	// MODEL_ROUTES environment variable get: that path predates the ceiling and
+	// only ever pointed at a local provider.
+	MaxClassification string `json:"maxClassification,omitempty"`
 }
 
 // Registry is the model registry and router.
@@ -106,6 +114,37 @@ func (r *Registry) Resolve(logical string) (LLM, Route, error) {
 		return nil, Route{}, fmt.Errorf("%w: %q", ErrUnknownModel, logical)
 	}
 	return r.providers[route.Provider], route, nil
+}
+
+// Permits reports whether content of the given classification may be sent to
+// the provider behind this route.
+//
+// The ladder is passed in rather than imported: the classification policy is
+// configuration, and this package must not grow a second copy of it that can
+// disagree with the one the corpus uses.
+//
+// An unknown classification is refused. A ladder that does not contain the
+// level being checked means the two halves of the platform disagree about what
+// levels exist, and guessing in that state is how content escapes.
+func (r Route) Permits(ladder []string, classification string) bool {
+	if r.MaxClassification == "" || classification == "" {
+		return true
+	}
+	ceiling := indexOf(ladder, r.MaxClassification)
+	level := indexOf(ladder, classification)
+	if ceiling < 0 || level < 0 {
+		return false
+	}
+	return level <= ceiling
+}
+
+func indexOf(ladder []string, value string) int {
+	for index, entry := range ladder {
+		if entry == value {
+			return index
+		}
+	}
+	return -1
 }
 
 // DefaultModel returns the logical id used when a caller names no model.

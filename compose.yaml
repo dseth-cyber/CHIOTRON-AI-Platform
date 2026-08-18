@@ -39,6 +39,12 @@ services:
       REDIS_ADDR: ${REDIS_ADDR:-redis:6379}
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}
       REDIS_DB: ${REDIS_DB:-0}
+      # Seals provider API keys at rest. It stays an environment variable on
+      # purpose: a key stored in the database it protects would protect nothing.
+      CONFIG_ENCRYPTION_KEY: ${CONFIG_ENCRYPTION_KEY:-}
+      # The three below seed the provider registry on first start only. After
+      # that the database owns routing and these are ignored, because two places
+      # to change one thing is one too many.
       COMPUTE_PROVIDER: ${COMPUTE_PROVIDER:-ollama}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
       MODEL_ROUTES: ${MODEL_ROUTES:-default=ollama/qwen2.5:0.5b}
