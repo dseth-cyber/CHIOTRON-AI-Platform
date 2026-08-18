@@ -55,6 +55,7 @@ func (d Deps) guard(scope string, next http.HandlerFunc) http.HandlerFunc {
 		switch {
 		case errors.Is(err, auth.ErrInvalidKey):
 			d.Log.Warn("api key rejected", "reason", reason, "path", r.URL.Path)
+			d.Instruments.RecordAuthFailure(r.Context(), reason)
 			unauthorized(w, "invalid api key")
 			return
 		case err != nil:
@@ -91,6 +92,7 @@ func (d Deps) guard(scope string, next http.HandlerFunc) http.HandlerFunc {
 		writeRateLimitHeaders(w, decision)
 		if !decision.Allowed {
 			d.recordDenied(r, identity, scope, "rate limit exceeded")
+			d.Instruments.RecordRateLimitDenial(r.Context(), "request")
 			w.Header().Set("Retry-After", strconv.Itoa(decision.RetryAfter(time.Now())))
 			writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "rate limit exceeded"})
 			return

@@ -31,7 +31,10 @@ import (
 // them. Shutdown flushes pending spans and must run before the process exits.
 type Provider struct {
 	MetricsHandler http.Handler
-	shutdown       []func(context.Context) error
+	// Metrics is the platform's own instrument set, emitted through the same
+	// registry as the runtime and HTTP metrics so there is one scrape endpoint.
+	Metrics  *Metrics
+	shutdown []func(context.Context) error
 }
 
 // Setup installs the global tracer, meter and propagator.
@@ -72,6 +75,10 @@ func Setup(ctx context.Context, cfg config.Config, log *slog.Logger) (*Provider,
 	otel.SetMeterProvider(meterProvider)
 	provider.shutdown = append(provider.shutdown, meterProvider.Shutdown)
 	provider.MetricsHandler = promhttp.HandlerFor(registry, promhttp.HandlerOpts{})
+
+	// Instruments are created after the meter provider is installed, or they
+	// would bind to the no-op default and record nothing.
+	provider.Metrics = NewMetrics(cfg.TokenPrices, cfg.Currency, log)
 
 	// W3C trace context lets a span started at Nginx or the portal continue
 	// through the Control Plane and on to downstream services.

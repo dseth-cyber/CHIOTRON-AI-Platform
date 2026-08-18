@@ -75,6 +75,13 @@ type Limiter interface {
 	Permit(ctx context.Context, subject string, limit int) (bool, error)
 }
 
+// Observer receives tool outcomes for metrics. It is separate from Recorder
+// because one writes a durable audit row and the other moves a counter, and a
+// deployment may want either without the other.
+type Observer interface {
+	RecordToolCall(ctx context.Context, slug, outcome string, latency time.Duration)
+}
+
 // Recorder writes the tool-call audit trail.
 type Recorder interface {
 	RecordToolCall(ctx context.Context, call Record)
@@ -104,19 +111,21 @@ type Registry struct {
 	implementations map[string]Implementation
 	limiter         Limiter
 	recorder        Recorder
+	observer        Observer
 	// redactArguments follows the prompt-logging policy: tool arguments are
 	// derived from user content and are withheld when that is switched off.
 	redactArguments bool
 }
 
 func NewRegistry(registrations []Registration, implementations []Implementation,
-	limiter Limiter, recorder Recorder, recordArguments bool) (*Registry, error) {
+	limiter Limiter, recorder Recorder, observer Observer, recordArguments bool) (*Registry, error) {
 
 	registry := &Registry{
 		registrations:   make(map[string]Registration, len(registrations)),
 		implementations: make(map[string]Implementation, len(implementations)),
 		limiter:         limiter,
 		recorder:        recorder,
+		observer:        observer,
 		redactArguments: !recordArguments,
 	}
 	for _, implementation := range implementations {
@@ -243,6 +252,9 @@ func (r *Registry) Invoke(ctx context.Context, runID, slug string, call Invocati
 
 func (r *Registry) record(ctx context.Context, runID, slug string, call Invocation,
 	outcome, reason string, latency time.Duration) {
+	if r.observer != nil {
+		r.observer.RecordToolCall(ctx, slug, outcome, latency)
+	}
 	if r.recorder == nil {
 		return
 	}

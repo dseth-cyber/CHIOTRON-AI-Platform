@@ -1,0 +1,12 @@
+apiVersion: 1
+
+providers:
+  - name: chiotron-ai
+    type: file
+    folder: CHIOTRON AI
+    # Dashboards are files in the repository rather than state in Grafana, so
+    # they can be reviewed, versioned and handed to the production Grafana.
+    allowUiUpdates: false
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

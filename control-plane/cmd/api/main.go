@@ -112,13 +112,13 @@ func run() error {
 		return err
 	}
 
-	knowledgeDeps, err := buildKnowledge(ctx, cfg, pool, log)
+	knowledgeDeps, err := buildKnowledge(ctx, cfg, pool, tel.Metrics, log)
 	if err != nil {
 		return err
 	}
 
 	limiter := ratelimit.New(redisClient)
-	agentDeps, err := buildAgent(ctx, cfg, pool, compute, knowledgeDeps, limiter, log)
+	agentDeps, err := buildAgent(ctx, cfg, pool, compute, knowledgeDeps, limiter, tel.Metrics, log)
 	if err != nil {
 		return err
 	}
@@ -137,6 +137,7 @@ func run() error {
 		Conversations: conversation.NewStore(pool, cfg.PersistPrompts),
 		Knowledge:     knowledgeDeps,
 		Agent:         agentDeps,
+		Instruments:   tel.Metrics,
 		Checkers: []httpapi.Checker{
 			httpapi.CheckerFunc{DependencyName: "postgres", Probe: pool.Ping},
 			httpapi.CheckerFunc{DependencyName: "redis", Probe: func(ctx context.Context) error {
@@ -187,7 +188,8 @@ func run() error {
 // The worker runs for as long as ctx lives, which is until the process is asked
 // to stop. It is started here rather than in run() so everything the knowledge
 // platform needs is assembled in one place.
-func buildKnowledge(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log *slog.Logger) (httpapi.Knowledge, error) {
+func buildKnowledge(ctx context.Context, cfg config.Config, pool *pgxpool.Pool,
+	metrics *telemetry.Metrics, log *slog.Logger) (httpapi.Knowledge, error) {
 	policy, err := knowledge.NewPolicy(cfg.ClassificationLevels)
 	if err != nil {
 		return httpapi.Knowledge{}, fmt.Errorf("classification policy: %w", err)
@@ -212,7 +214,7 @@ func buildKnowledge(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, 
 
 	// Ingestion never blocks startup: the compute plane may be down, and
 	// documents simply wait as pending until it returns.
-	worker := knowledge.NewWorker(documents, objects, embedder, relationships, plan,
+	worker := knowledge.NewWorker(documents, objects, embedder, relationships, metrics, plan,
 		cfg.IngestionInterval, cfg.IngestionBatch, log)
 	go worker.Run(ctx)
 
@@ -239,7 +241,7 @@ func buildKnowledge(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, 
 // see it, rather than on somebody's first question.
 func buildAgent(ctx context.Context, cfg config.Config, pool *pgxpool.Pool,
 	compute *provider.Registry, knowledgeDeps httpapi.Knowledge,
-	limiter *ratelimit.Limiter, log *slog.Logger) (httpapi.Agent, error) {
+	limiter *ratelimit.Limiter, metrics *telemetry.Metrics, log *slog.Logger) (httpapi.Agent, error) {
 
 	policy, err := agent.NewPolicy(cfg.AgentMaxSteps, cfg.AgentTopK, cfg.AgentMinScore, cfg.AgentConflictMargin)
 	if err != nil {
@@ -280,7 +282,7 @@ func buildAgent(ctx context.Context, cfg config.Config, pool *pgxpool.Pool,
 
 	// Tool arguments are derived from user content, so they follow the same
 	// prompt-logging policy as conversations.
-	registry, err := tool.NewRegistry(registrations, implementations, limiter, runs, cfg.PersistPrompts)
+	registry, err := tool.NewRegistry(registrations, implementations, limiter, runs, metrics, cfg.PersistPrompts)
 	if err != nil {
 		return httpapi.Agent{}, err
 	}

@@ -1,0 +1,106 @@
+# Alert rules for the AI platform.
+#
+# These are portable artefacts: production loads them into the existing
+# Prometheus rather than running the one in compose. Each rule carries a runbook
+# annotation pointing at docs/RUNBOOKS.md, because an alert nobody knows how to
+# act on is noise.
+
+groups:
+  - name: availability
+    rules:
+      - alert: ControlPlaneDown
+        expr: up{job="control-plane"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: The Control Plane is not answering scrapes.
+          runbook: docs/RUNBOOKS.md#control-plane-unreachable
+
+      # VM5 loss degrades model calls only. It is urgent but it is not an outage
+      # of the platform (ARCHITECTURE-v1 section 9), so it is a warning.
+      - alert: ComputePlaneUnreachable
+        expr: up{job="compute-gpu"} == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: The compute plane exporter is not answering.
+          runbook: docs/RUNBOOKS.md#compute-plane-unavailable
+
+  - name: capacity
+    rules:
+      # The development card has 2 GB. Crossing 90% is where model loads start
+      # failing rather than merely running slowly.
+      - alert: GPUMemoryExhausted
+        expr: |
+          gpu_memory_used_bytes / gpu_memory_total_bytes > 0.9
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "GPU {{ $labels.gpu }} ({{ $labels.name }}) is above 90% VRAM."
+          runbook: docs/RUNBOOKS.md#gpu-memory-exhausted
+
+      - alert: CompletionLatencyHigh
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le, logical_model) (rate(ai_chat_latency_seconds_bucket[10m]))
+          ) > 30
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "95th percentile completion latency for {{ $labels.logical_model }} is above 30s."
+          runbook: docs/RUNBOOKS.md#completions-are-slow
+
+  - name: correctness
+    rules:
+      # A corpus that stops ingesting looks healthy from the outside: uploads
+      # still return 202 and searches still answer, just from stale content.
+      - alert: IngestionFailing
+        expr: |
+          increase(ai_ingestion_documents_total{outcome="failure"}[15m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Documents are failing ingestion.
+          runbook: docs/RUNBOOKS.md#ingestion-failures
+
+      # Answers that cite nothing are the failure mode retrieval exists to
+      # prevent, and they are invisible without this.
+      - alert: AgentAnswersUngrounded
+        expr: |
+          sum(rate(ai_agent_runs_total{grounded="false",outcome="success"}[30m]))
+            /
+          clamp_min(sum(rate(ai_agent_runs_total{outcome="success"}[30m])), 0.001)
+            > 0.5
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: More than half of successful agent answers cite no source.
+          runbook: docs/RUNBOOKS.md#answers-are-ungrounded
+
+  - name: security
+    rules:
+      - alert: CredentialRejectionSpike
+        expr: |
+          sum(rate(ai_auth_failures_total[5m])) > 1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Sustained credential rejections, which may be a probe.
+          runbook: docs/RUNBOOKS.md#credential-rejections
+
+      - alert: QuotaDenialsSustained
+        expr: |
+          sum(rate(ai_rate_limit_denials_total[15m])) > 0.5
+        for: 15m
+        labels:
+          severity: info
+        annotations:
+          summary: Callers are being throttled steadily; a quota may be too low.
+          runbook: docs/RUNBOOKS.md#quota-denials

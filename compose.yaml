@@ -114,6 +114,67 @@ services:
       - "5173:80"
     networks: [control]
 
+  # Development-only observability. Production reuses the existing Prometheus,
+  # Grafana, Loki and Tempo (ARCHITECTURE-v1 section 9) and loads the same
+  # dashboards and alert rules from infra/. This profile exists so those
+  # artefacts can be validated against a running platform before handover.
+  prometheus:
+    image: prom/prometheus:v3.1.0
+    profiles: ["observability"]
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=7d
+      - --web.enable-lifecycle
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infra/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    networks: [control]
+
+  grafana:
+    image: grafana/grafana:11.5.1
+    profiles: ["observability"]
+    environment:
+      # Development only. Production uses the existing Grafana and its identity.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-change-me-before-production}
+      GF_USERS_DEFAULT_THEME: dark
+    volumes:
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    depends_on: [prometheus]
+    ports:
+      - "3000:3000"
+    networks: [control]
+
+  # GPU metrics come from the compute plane, because only a process with the
+  # NVIDIA runtime can see the card.
+  gpu-exporter:
+    build:
+      context: ./control-plane
+      dockerfile: Dockerfile.gpu-exporter
+    profiles: ["compute"]
+    environment:
+      GPU_EXPORTER_ADDR: ${GPU_EXPORTER_ADDR:-:9401}
+      GPU_EXPORTER_INTERVAL: ${GPU_EXPORTER_INTERVAL:-10s}
+      # utility is what makes the runtime inject nvidia-smi into the container.
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: utility
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    # On `control` as well, so Prometheus can scrape it without crossing into
+    # the compute network.
+    networks: [compute, control]
+
   # VM5 substitute for local development. In production it belongs on an isolated GPU VM.
   ollama:
     image: ollama/ollama:latest
@@ -146,3 +207,5 @@ volumes:
   redis-data:
   ollama-data:
   document-data:
+  prometheus-data:
+  grafana-data:

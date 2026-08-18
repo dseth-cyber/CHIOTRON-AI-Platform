@@ -16,12 +16,6 @@ import (
 // batches are fewer round trips but a longer stall if the compute plane is slow.
 const embedBatch = 16
 
-// Worker ingests pending documents: read from storage, parse, chunk, embed and
-// store.
-//
-// It runs in-process rather than as a separate deployable. Ingestion is not on a
-// user's request path, and splitting it out is a scaling decision that belongs
-// with the Kafka work rather than something to guess at now.
 // Projector receives a document's graph contribution. It is an interface so the
 // worker depends on the GraphProvider contract rather than on where the graph
 // lives (ARCHITECTURE-v1 section 6).
@@ -29,11 +23,24 @@ type Projector interface {
 	Project(ctx context.Context, documentID string, projection graph.Projection) error
 }
 
+// Observer records ingestion outcomes for metrics. It is optional: losing a
+// metric must not stop a document being ingested.
+type Observer interface {
+	RecordIngestion(ctx context.Context, outcome string, chunks int)
+}
+
+// Worker ingests pending documents: read from storage, parse, chunk, embed and
+// store.
+//
+// It runs in-process rather than as a separate deployable. Ingestion is not on a
+// user's request path, and splitting it out is a scaling decision that belongs
+// with the Kafka work rather than something to guess at now.
 type Worker struct {
 	store    *Store
 	storage  storage.Provider
 	embedder provider.EmbeddingProvider
 	graph    Projector
+	metrics  Observer
 	plan     ChunkPlan
 	log      *slog.Logger
 	interval time.Duration
@@ -41,12 +48,14 @@ type Worker struct {
 }
 
 func NewWorker(store *Store, objects storage.Provider, embedder provider.EmbeddingProvider,
-	projector Projector, plan ChunkPlan, interval time.Duration, batch int, log *slog.Logger) *Worker {
+	projector Projector, metrics Observer, plan ChunkPlan, interval time.Duration,
+	batch int, log *slog.Logger) *Worker {
 	if batch <= 0 {
 		batch = 4
 	}
 	return &Worker{
-		store: store, storage: objects, embedder: embedder, graph: projector, plan: plan,
+		store: store, storage: objects, embedder: embedder, graph: projector,
+		metrics: metrics, plan: plan,
 		log: log, interval: interval, batch: batch,
 	}
 }
@@ -104,6 +113,7 @@ func (w *Worker) pass(ctx context.Context) (int, error) {
 			// One bad document must not stop the queue. The reason is stored on
 			// the row so an operator can see it without reading logs.
 			w.log.Error("ingest document", "documentId", document.ID, "title", document.Title, "error", err)
+			w.record(ctx, "failure", 0)
 			if markErr := w.store.MarkFailed(context.WithoutCancel(ctx), document.ID, err.Error()); markErr != nil {
 				w.log.Error("mark document failed", "documentId", document.ID, "error", markErr)
 			}
@@ -161,8 +171,17 @@ func (w *Worker) ingest(ctx context.Context, document Document) error {
 		}
 	}
 
+	w.record(ctx, "success", len(chunks))
 	w.log.Info("document ingested",
 		"documentId", document.ID, "chunks", len(chunks), "graphNodes", projected,
 		"classification", document.Classification, "company", document.CompanyID)
 	return nil
+}
+
+// record reports an ingestion outcome when metrics are wired.
+func (w *Worker) record(ctx context.Context, outcome string, chunks int) {
+	if w.metrics == nil {
+		return
+	}
+	w.metrics.RecordIngestion(ctx, outcome, chunks)
 }

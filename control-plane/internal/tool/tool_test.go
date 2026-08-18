@@ -65,7 +65,7 @@ func testRegistry(t *testing.T, limiter *stubLimiter, recorder *stubRecorder,
 			RequiredScope: "models:read", MaxCallsPerMinute: 5,
 		}}
 	}
-	registry, err := NewRegistry(registrations, []Implementation{implementation}, limiter, recorder, true)
+	registry, err := NewRegistry(registrations, []Implementation{implementation}, limiter, recorder, nil, true)
 	if err != nil {
 		t.Fatalf("NewRegistry() returned error: %v", err)
 	}
@@ -88,7 +88,7 @@ func TestNewRegistryRejectsBadRegistrations(t *testing.T) {
 	for name, registrations := range cases {
 		t.Run(name, func(t *testing.T) {
 			_, err := NewRegistry(registrations, []Implementation{implementation},
-				&stubLimiter{allow: true}, &stubRecorder{}, true)
+				&stubLimiter{allow: true}, &stubRecorder{}, nil, true)
 			if err == nil {
 				t.Fatal("NewRegistry() succeeded, want error")
 			}
@@ -183,7 +183,7 @@ func TestArgumentsAreWithheldWhenPromptLoggingIsOff(t *testing.T) {
 	recorder := &stubRecorder{}
 	registry, err := NewRegistry([]Registration{{
 		Slug: "demo.tool", Kind: "demo", RequiredScope: "models:read", MaxCallsPerMinute: 5,
-	}}, []Implementation{implementation}, &stubLimiter{allow: true}, recorder, false)
+	}}, []Implementation{implementation}, &stubLimiter{allow: true}, recorder, nil, false)
 	if err != nil {
 		t.Fatalf("NewRegistry() returned error: %v", err)
 	}

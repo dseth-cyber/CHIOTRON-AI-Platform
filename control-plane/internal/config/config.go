@@ -74,6 +74,12 @@ type Config struct {
 	OTLPInsecure     bool
 	TraceSampleRatio float64
 
+	// TokenPrices is the cost per 1000 tokens per logical model. Local inference
+	// has no invoice, so a cost figure is what an operator declares a token is
+	// worth; a model with no price simply reports no cost.
+	TokenPrices map[string]float64
+	Currency    string
+
 	StartupTimeout   time.Duration
 	ShutdownTimeout  time.Duration
 	ReadinessTimeout time.Duration
@@ -101,6 +107,7 @@ func Load(getenv func(string) string, version string) (Config, error) {
 		ServiceVersion: version,
 		Environment:    stringVar(getenv, "DEPLOYMENT_ENVIRONMENT", "development"),
 		OTLPEndpoint:   stringVar(getenv, "OTEL_EXPORTER_OTLP_ENDPOINT", ""),
+		Currency:       stringVar(getenv, "TOKEN_CURRENCY", "THB"),
 	}
 
 	var problems []string
@@ -224,6 +231,9 @@ func Load(getenv func(string) string, version string) (Config, error) {
 	} else if cfg.GraphMaxNodes < 1 {
 		fail("GRAPH_MAX_NODES must be at least 1, got %d", cfg.GraphMaxNodes)
 	}
+	if cfg.TokenPrices, err = priceVar(getenv, "TOKEN_PRICES", ""); err != nil {
+		fail("%v", err)
+	}
 
 	if len(problems) > 0 {
 		return Config{}, fmt.Errorf("invalid configuration:\n  - %s", strings.Join(problems, "\n  - "))
@@ -275,6 +285,30 @@ func boolVar(getenv func(string) string, key string, fallback bool) (bool, error
 		return false, fmt.Errorf("%s must be true or false, got %q", key, raw)
 	}
 	return value, nil
+}
+
+// priceVar reads a `logical=rate` list, for example `default=0.5,fast=1.2`.
+//
+// An empty setting is normal: without declared rates the platform simply reports
+// no cost, which is more honest than inventing one for local inference.
+func priceVar(getenv func(string) string, key, fallback string) (map[string]float64, error) {
+	prices := map[string]float64{}
+	for _, entry := range strings.Split(stringVar(getenv, key, fallback), ",") {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+		model, rate, ok := strings.Cut(entry, "=")
+		if !ok {
+			return nil, fmt.Errorf("%s entry %q must be written model=ratePerThousandTokens", key, entry)
+		}
+		value, err := strconv.ParseFloat(strings.TrimSpace(rate), 64)
+		if err != nil || value < 0 {
+			return nil, fmt.Errorf("%s entry %q must name a non-negative rate", key, entry)
+		}
+		prices[strings.TrimSpace(model)] = value
+	}
+	return prices, nil
 }
 
 // floatVar reads a non-negative number. Unlike ratioVar it is not capped at 1,

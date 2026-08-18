@@ -201,7 +201,35 @@ Both `GRAPH_DEPTH` and `GRAPH_MAX_NODES` exist because either alone is insuffici
 
 ## Observability
 
-The platform reuses the existing monitoring stack rather than running one of its own.
+The platform reuses the existing monitoring stack rather than running one of its own. Dashboards and alert rules are files in `infra/`, so they are reviewed and versioned here and loaded by the production Prometheus and Grafana. A development-only `observability` profile runs its own pair so those artefacts can be validated against a running platform before handover:
+
+```powershell
+docker compose --profile observability up -d   # Prometheus :9090, Grafana :3000
+docker compose --profile compute up -d gpu-exporter
+```
+
+### Metric contract
+
+The names are the contract — dashboards and alert rules are written against them, so they change only with the dashboards that read them.
+
+| Metric | What it answers |
+|---|---|
+| `ai_chat_requests_total`, `ai_chat_tokens_total`, `ai_chat_latency_seconds` | Volume, token consumption and latency per logical model |
+| `ai_chat_cost_total` | Configured cost of consumed tokens |
+| `ai_agent_runs_total`, `ai_agent_steps_total` | Agent outcomes, including whether answers were grounded and conflicted |
+| `ai_retrieval_best_score` | Whether retrieval is actually finding anything |
+| `ai_tool_calls_total`, `ai_tool_latency_seconds` | Tool use, including denied and throttled calls |
+| `ai_ingestion_documents_total`, `ai_ingestion_chunks_total` | Whether the corpus is still growing |
+| `ai_auth_failures_total`, `ai_rate_limit_denials_total` | Rejected credentials and quota refusals |
+| `gpu_memory_*`, `gpu_utilisation_ratio`, `gpu_temperature_celsius` | Compute-plane capacity, from the exporter on VM5 |
+
+No label carries an API key or a company. Metrics are scraped and retained by a shared Prometheus, and per-tenant labels would both explode cardinality and put tenancy in a store with weaker access controls than the audit tables that already hold it.
+
+**Cost is a configured rate, not an invoice.** Local inference bills nothing, so `TOKEN_PRICES` declares what a thousand tokens of a logical model is worth. A model with no declared rate reports no cost, which is more honest than inventing one.
+
+GPU metrics come from `cmd/gpu-exporter`, deployed on the compute plane because only a process with the NVIDIA runtime can see the card. It shells out to `nvidia-smi` on a timer rather than on scrape, so a hung driver call cannot stall Prometheus, and it keeps the previous readings on failure so a transient error shows as a stale scrape rather than a GPU that appears to have vanished.
+
+Alert rules live in `infra/prometheus/alerts.yml` and every one points at a section of [docs/RUNBOOKS.md](docs/RUNBOOKS.md) — an alert nobody knows how to act on is noise. The runbooks also cover backup, restore and per-plane disaster recovery; the restore procedure has been exercised against this platform and records what was and was not verified.
 
 - **Metrics** are always available at `/metrics`: Go runtime, process and OpenTelemetry HTTP server metrics, plus a `target_info` series carrying `service.name`, `service.version` and `deployment.environment.name`. No collector needs to be reachable for this to work.
 - **Traces** are exported over OTLP/HTTP only when `OTEL_EXPORTER_OTLP_ENDPOINT` is set, so local development runs unchanged without a collector. `OTEL_TRACES_SAMPLER_ARG` sets the sample ratio.

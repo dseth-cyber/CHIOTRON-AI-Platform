@@ -15,6 +15,7 @@ import (
 	"github.com/chiotron/ai-control-plane/internal/auth"
 	"github.com/chiotron/ai-control-plane/internal/config"
 	"github.com/chiotron/ai-control-plane/internal/provider"
+	"github.com/chiotron/ai-control-plane/internal/telemetry"
 )
 
 // Checker reports whether one backing dependency is usable right now.
@@ -47,6 +48,10 @@ type Deps struct {
 	Conversations ConversationStore
 	Knowledge     Knowledge
 	Agent         Agent
+	// Instruments records platform metrics. Metrics above is the scrape handler
+	// that exposes them. Both are optional: losing a metric must not stop the
+	// platform serving requests.
+	Instruments *telemetry.Metrics
 }
 
 // authenticated reports whether the authenticated routes can be served. They

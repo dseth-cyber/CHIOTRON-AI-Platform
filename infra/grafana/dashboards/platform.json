@@ -1,0 +1,171 @@
+{
+  "uid": "chiotron-ai-platform",
+  "title": "CHIOTRON AI Platform",
+  "description": "Usage, cost, retrieval quality and compute capacity. Cost is a configured rate per 1000 tokens, not an invoice.",
+  "tags": ["chiotron", "ai"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Completions per minute",
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum(rate(ai_chat_requests_total[5m])) * 60",
+          "legendFormat": "requests"
+        }
+      ],
+      "fieldConfig": { "defaults": { "decimals": 2, "unit": "short" }, "overrides": [] }
+    },
+    {
+      "type": "stat",
+      "title": "Tokens per minute",
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum by (direction) (rate(ai_chat_tokens_total[5m])) * 60",
+          "legendFormat": "{{direction}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "decimals": 0, "unit": "short" }, "overrides": [] }
+    },
+    {
+      "type": "stat",
+      "title": "Configured cost per hour",
+      "description": "Rates come from TOKEN_PRICES. A model with no declared rate contributes nothing, so an empty panel means no prices are configured rather than no usage.",
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum(rate(ai_chat_cost_total[15m])) * 3600",
+          "legendFormat": "cost"
+        }
+      ],
+      "fieldConfig": { "defaults": { "decimals": 2, "unit": "short" }, "overrides": [] }
+    },
+    {
+      "type": "stat",
+      "title": "Grounded answers",
+      "description": "Share of successful agent runs whose answer cited at least one retrieved passage.",
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum(rate(ai_agent_runs_total{grounded=\"true\",outcome=\"success\"}[30m])) / clamp_min(sum(rate(ai_agent_runs_total{outcome=\"success\"}[30m])), 0.001)",
+          "legendFormat": "grounded"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "orange", "value": 0.5 },
+              { "color": "green", "value": 0.8 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Completion latency",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 5 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.5, sum by (le, logical_model) (rate(ai_chat_latency_seconds_bucket[5m])))",
+          "legendFormat": "p50 {{logical_model}}"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, logical_model) (rate(ai_chat_latency_seconds_bucket[5m])))",
+          "legendFormat": "p95 {{logical_model}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] }
+    },
+    {
+      "type": "timeseries",
+      "title": "Retrieval strength",
+      "description": "Best fused score per agent run. Reciprocal rank fusion scores are small by construction: a single top-ranked hit contributes 1/61.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 5 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.5, sum by (le) (rate(ai_retrieval_best_score_bucket[15m])))",
+          "legendFormat": "median best score"
+        }
+      ],
+      "fieldConfig": { "defaults": { "decimals": 4 }, "overrides": [] }
+    },
+    {
+      "type": "timeseries",
+      "title": "Tool calls by outcome",
+      "description": "Denied and throttled calls are included on purpose: they are how a misconfigured scope or quota becomes visible.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 13 },
+      "targets": [
+        {
+          "expr": "sum by (tool, outcome) (rate(ai_tool_calls_total[5m])) * 60",
+          "legendFormat": "{{tool}} {{outcome}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] }
+    },
+    {
+      "type": "timeseries",
+      "title": "Refusals",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 13 },
+      "targets": [
+        {
+          "expr": "sum by (reason) (rate(ai_auth_failures_total[5m])) * 60",
+          "legendFormat": "auth {{reason}}"
+        },
+        {
+          "expr": "sum by (kind) (rate(ai_rate_limit_denials_total[5m])) * 60",
+          "legendFormat": "quota {{kind}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] }
+    },
+    {
+      "type": "timeseries",
+      "title": "Ingestion",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 21 },
+      "targets": [
+        {
+          "expr": "sum by (outcome) (increase(ai_ingestion_documents_total[15m]))",
+          "legendFormat": "documents {{outcome}}"
+        },
+        {
+          "expr": "increase(ai_ingestion_chunks_total[15m])",
+          "legendFormat": "chunks"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] }
+    },
+    {
+      "type": "timeseries",
+      "title": "GPU memory and utilisation",
+      "description": "From the compute plane exporter. Absent unless the compute profile is running.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 21 },
+      "targets": [
+        {
+          "expr": "gpu_memory_used_bytes / gpu_memory_total_bytes",
+          "legendFormat": "VRAM used {{name}}"
+        },
+        {
+          "expr": "gpu_utilisation_ratio",
+          "legendFormat": "GPU busy {{name}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "percentunit", "min": 0, "max": 1 },
+        "overrides": []
+      }
+    }
+  ]
+}

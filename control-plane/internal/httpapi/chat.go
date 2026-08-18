@@ -228,6 +228,9 @@ func (d Deps) recordCompletion(ctx context.Context, caller auth.Identity, plan c
 		LatencyMs:        response.LatencyMs,
 		Outcome:          audit.OutcomeSuccess,
 	})
+	d.Instruments.RecordCompletion(ctx, route.Logical, route.Provider, response.Model,
+		audit.OutcomeSuccess, response.Usage.PromptTokens, response.Usage.CompletionTokens,
+		time.Duration(response.LatencyMs)*time.Millisecond)
 
 	if !plan.stateful() {
 		return

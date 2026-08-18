@@ -1,0 +1,16 @@
+FROM golang:1.25-alpine AS build
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY cmd ./cmd
+COPY internal ./internal
+ARG VERSION=dev
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/gpu-exporter ./cmd/gpu-exporter
+
+# Debian rather than Alpine: the NVIDIA container runtime mounts the host's
+# nvidia-smi into the container, and that binary is linked against glibc.
+FROM gcr.io/distroless/base-debian12:nonroot
+COPY --from=build /out/gpu-exporter /gpu-exporter
+EXPOSE 9401
+USER nonroot:nonroot
+ENTRYPOINT ["/gpu-exporter"]

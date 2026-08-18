@@ -119,6 +119,18 @@ func registerAgent(mux *http.ServeMux, d Deps) {
 		if runErr != nil {
 			status, failure = agent.OutcomeFailure, runErr.Error()
 		}
+
+		// A failed run is still a run, and its steps are still what an operator
+		// looks at to understand why.
+		var bestScore float64
+		if len(answer.Citations) > 0 {
+			bestScore = answer.Citations[0].Score
+		}
+		d.Instruments.RecordAgentRun(r.Context(), selected.Slug, status,
+			answer.Grounded, answer.Conflicted, bestScore)
+		for _, step := range answer.Steps {
+			d.Instruments.RecordAgentStep(r.Context(), step.Kind, step.Outcome)
+		}
 		// The trace is saved either way: a failed run is exactly what somebody
 		// investigating a bad answer needs to see.
 		runID, saveErr := d.Agent.Runs.Save(r.Context(), caller, selected.ID, conversationID,
