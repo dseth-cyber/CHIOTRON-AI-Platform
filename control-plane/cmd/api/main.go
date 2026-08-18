@@ -35,6 +35,7 @@ import (
 	"github.com/chiotron/ai-control-plane/internal/graph"
 	"github.com/chiotron/ai-control-plane/internal/httpapi"
 	"github.com/chiotron/ai-control-plane/internal/knowledge"
+	"github.com/chiotron/ai-control-plane/internal/mcp"
 	"github.com/chiotron/ai-control-plane/internal/migrate"
 	"github.com/chiotron/ai-control-plane/internal/migrations"
 	"github.com/chiotron/ai-control-plane/internal/provider"
@@ -280,6 +281,13 @@ func buildAgent(ctx context.Context, cfg config.Config, pool *pgxpool.Pool,
 		},
 	}
 
+	// Remote MCP tools join the same registry as the built-ins, so they travel
+	// the same authorization, rate-limit and audit path. Discovery never blocks
+	// startup: an MCP server is a separate deployable and may be down.
+	remoteRegistrations, remoteImplementations := discoverMCP(ctx, pool, log)
+	registrations = append(registrations, remoteRegistrations...)
+	implementations = append(implementations, remoteImplementations...)
+
 	// Tool arguments are derived from user content, so they follow the same
 	// prompt-logging policy as conversations.
 	registry, err := tool.NewRegistry(registrations, implementations, limiter, runs, metrics, cfg.PersistPrompts)
@@ -303,6 +311,50 @@ func buildAgent(ctx context.Context, cfg config.Config, pool *pgxpool.Pool,
 		Runs:  runs,
 		Tools: registry,
 	}, nil
+}
+
+// discoverMCP connects to each registered MCP server and turns the tools it
+// advertises into registry entries.
+//
+// A failure returns nothing rather than an error: the platform must start
+// without its MCP servers, the same way it starts without the compute plane. The
+// reason is recorded on the server row, so an operator sees why a server's tools
+// are missing without reading logs.
+func discoverMCP(ctx context.Context, pool *pgxpool.Pool, log *slog.Logger) ([]tool.Registration, []tool.Implementation) {
+	discovered, err := mcp.Discover(ctx, mcp.NewStore(pool), log)
+	if err != nil {
+		log.Error("read mcp registry", "error", err)
+		return nil, nil
+	}
+
+	registrations := make([]tool.Registration, 0, len(discovered))
+	implementations := make([]tool.Implementation, 0, len(discovered))
+	for _, entry := range discovered {
+		remote := tool.Remote{
+			Client:      entry.Client,
+			RemoteName:  entry.Tool.Name,
+			Slug:        entry.Slug,
+			Description: entry.Tool.Description,
+			Schema:      entry.Tool.InputSchema,
+			Primary:     tool.InferPrimaryArgument(entry.Tool.InputSchema),
+		}
+		name := entry.Tool.Title
+		if name == "" {
+			name = entry.Tool.Name
+		}
+		registrations = append(registrations, tool.Registration{
+			Slug: entry.Slug, Name: name, Description: entry.Tool.Description,
+			Kind: remote.Kind(),
+			// The scope is the server's, not the remote tool's: a server decides
+			// what it offers and may change it, so it cannot choose its own
+			// permissions.
+			RequiredScope:     entry.Server.RequiredScope,
+			CompanyID:         entry.Server.CompanyID,
+			MaxCallsPerMinute: entry.Server.MaxCallsPerMinute,
+		})
+		implementations = append(implementations, remote)
+	}
+	return registrations, implementations
 }
 
 // runAPIKey mints the first key.

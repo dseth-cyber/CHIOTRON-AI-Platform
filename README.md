@@ -197,6 +197,24 @@ Both `GRAPH_DEPTH` and `GRAPH_MAX_NODES` exist because either alone is insuffici
 
 **Conflict is flagged, not resolved.** When the two strongest passages come from different documents of comparable *semantic* relevance, the run is marked `conflicted` and the prompt asks for both positions. The comparison uses cosine similarity rather than the fused score on purpose: RRF scores compress by construction — the top results differ by fractions of 1/61 — so a relative margin on them fires almost every time and says nothing about whether the documents are on the same subject.
 
+### MCP servers
+
+Model Context Protocol servers are reached over the network by a governed client, never spawned as child processes: the Control Plane image ships no runtime to spawn them with, and a tool running inside the gateway shares its blast radius. Servers are separate deployables the platform is a client of.
+
+A remote tool joins the **same registry** as a built-in — same scope check, same per-tool rate limit, same `tool_calls` audit row. There is one governance path, not two, because the weaker of two paths becomes the way in.
+
+Register a server in `mcp_servers`. Three fields carry the governance:
+
+- `required_scope` belongs to the **server**, not to the remote tool. A server decides what tools it offers and may change them, so it cannot choose its own permissions.
+- `allowed_tools` is an allowlist. Empty accepts everything advertised, which suits development and is too permissive for production — a server could otherwise widen its own surface after approval simply by advertising more.
+- `headers` holds credentials for reaching the server and is **never returned by any API**. A caller authorized to use a tool is not authorized to learn how the platform authenticates to it.
+
+Arguments are validated against the tool's declared JSON Schema *before* the call leaves the platform. A malformed call still crosses a trust boundary and still costs a rate-limit slot, and an undeclared property is more likely a caller typo than a feature. Keywords the validator does not implement are passed through rather than refused — rejecting a legitimate call over an unsupported keyword is worse than the server checking it too.
+
+Discovery runs at startup and never blocks it. A server that cannot be reached is skipped with the reason written to its row, so an operator sees why its tools are missing without reading logs — the same rule the compute plane follows.
+
+Verified against the official `@modelcontextprotocol/server-everything` over Streamable HTTP: 13 tools advertised, the allowlist admitted 2, the agent called one, a key without `tools:read` was refused, a malformed call was denied before leaving the platform, and stopping the server left the platform healthy with the failure recorded.
+
 **Tools are a controlled registry.** Each declares the scope a caller must hold, is rate limited per key *and* per tool through the same Redis counter as HTTP requests, and writes a `tool_calls` row on every path including denied and throttled. `knowledge.search` derives the caller's clearance inside the tool: an agent must not be able to widen the access of the person it acts for. The shipped tools are `knowledge.search`, `compute.health` and `platform.time`.
 
 ## Observability
