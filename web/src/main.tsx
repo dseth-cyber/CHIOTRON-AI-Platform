@@ -10,7 +10,19 @@ import type { TranslationKey } from './i18n';
 import { useComputeHealth, useCredential, useModels, usePlatform, useScopes } from './hooks';
 
 type PhaseStatus = 'complete' | 'active' | 'planned';
-type Phase = { id: number; title: string; detail: string; progress: number; done: number; total: number; status: PhaseStatus; sprints: string[] };
+/**
+ * What a stalled phase is waiting for. These are not tasks: each one needs a
+ * decision, a dataset or hardware that cannot be produced from inside the
+ * repository, which is why a phase can sit at 80% indefinitely.
+ */
+type Blocker = 'identity' | 'erp' | 'neo4j' | 'loki' | 'evalset' | 'gpu' | 'cluster';
+
+type Phase = {
+  id: number; title: string; detail: string;
+  progress: number; done: number; total: number;
+  status: PhaseStatus; sprints: string[];
+  blocker?: Blocker;
+};
 type View = 'portal' | 'roadmap' | 'rules' | 'architecture' | 'chat';
 type Overview = { total: number; done: number; progress: number; active: number };
 
@@ -18,19 +30,19 @@ type Overview = { total: number; done: number; progress: number; active: number 
 // are kept in its language until a translation review covers them. Every string
 // the platform itself owns goes through t().
 const initialPhases: Phase[] = [
-  { id: 1, title: 'Foundation', detail: 'Contracts, service boundaries, migrations and platform configuration', progress: 80, done: 4, total: 5, status: 'active', sprints: ['Architecture v1 and service boundaries recorded', 'Development compose and AI database foundation available', 'Service-owned migrations and configuration', 'OpenTelemetry baseline and CI checks', 'Identity/JWT contract integration'] },
-  { id: 2, title: 'AI Gateway', detail: 'JWT/API key enforcement, quota, streaming, usage and audit outbox', progress: 80, done: 4, total: 5, status: 'active', sprints: ['Health and platform discovery endpoint available', 'API keys, scopes and rotation', 'Usage metadata and audit outbox', 'Rate limits, quota and SSE streaming', 'JWT validation and active-company guard'] },
+  { id: 1, title: 'Foundation', detail: 'Contracts, service boundaries, migrations and platform configuration', progress: 80, done: 4, total: 5, status: 'active', sprints: ['Architecture v1 and service boundaries recorded', 'Development compose and AI database foundation available', 'Service-owned migrations and configuration', 'OpenTelemetry baseline and CI checks', 'Identity/JWT contract integration'], blocker: 'identity' },
+  { id: 2, title: 'AI Gateway', detail: 'JWT/API key enforcement, quota, streaming, usage and audit outbox', progress: 80, done: 4, total: 5, status: 'active', sprints: ['Health and platform discovery endpoint available', 'API keys, scopes and rotation', 'Usage metadata and audit outbox', 'Rate limits, quota and SSE streaming', 'JWT validation and active-company guard'], blocker: 'identity' },
   { id: 3, title: 'User Portal', detail: 'Assistant-first workspace, history, permissions and multilingual UI', progress: 100, done: 6, total: 6, status: 'complete', sprints: ['Application shell and Developer Portal delivered', 'Roadmap tracking UI delivered', 'Gateway-connected portal and chat workspace', 'Permission-aware navigation', 'Assistant catalogue and conversation history', 'Thai, English, Chinese, Burmese and Japanese i18n'] },
   { id: 4, title: 'Local LLM', detail: 'Provider routing, compute health and isolated local inference', progress: 100, done: 5, total: 5, status: 'complete', sprints: ['Ollama Compute Plane running', 'NVIDIA GPU passthrough verified', 'Qwen smoke-test model loaded', 'Provider-neutral Ollama adapter', 'Compute registry and model router'] },
   { id: 5, title: 'Knowledge Platform', detail: 'Document ACL, ingestion, embedding pipeline and hybrid search', progress: 100, done: 6, total: 6, status: 'complete', sprints: ['StorageProvider and source configuration', 'Document upload contract', 'ACL metadata and classification policy', 'Parser, chunking and provenance', 'Embedding worker and pgvector storage', 'Permission-filtered hybrid retrieval'] },
-  { id: 6, title: 'Agentic RAG', detail: 'Planner, controlled tools, citations and retrieval policies', progress: 80, done: 4, total: 5, status: 'active', sprints: ['Intent and planner policy', 'Controlled tool registry', 'Agent authorization and rate limits', 'Multi-step retrieval and conflict handling', 'Citation and evaluation suite'] },
-  { id: 7, title: 'GraphRAG', detail: 'Entity relationships, graph projection and relationship-aware answers', progress: 80, done: 4, total: 5, status: 'active', sprints: ['GraphProvider contract', 'AI-owned node and edge schema', 'Entity extraction and source links', 'Graph traversal policy', 'Neo4j migration adapter and evaluation'] },
-  { id: 8, title: 'Text-to-SQL', detail: 'Read-only analytics with semantic allowlists and auditability', progress: 0, done: 0, total: 6, status: 'planned', sprints: ['Approved schema and metric catalogue', 'Read-only database account', 'Company and tenant predicate enforcement', 'SQL parser and destructive-query blocklist', 'Timeout, result cap and export controls', 'Query audit and explanation UI'] },
-  { id: 9, title: 'MCP Integration', detail: 'Governed Model Context Protocol tools and execution controls', progress: 80, done: 4, total: 5, status: 'active', sprints: ['MCP client abstraction', 'Tool and permission registry', 'Input validation and scope checks', 'Tool-call rate limits and audit trail', 'Managed ERP, report and notification tools'] },
-  { id: 10, title: 'Enterprise Integration', detail: 'Authorized ERP API adapters and event-driven AI workflows', progress: 0, done: 0, total: 6, status: 'planned', sprints: ['ERP API capability inventory', 'Identity and company-context propagation', 'Read adapters for ERP domains', 'Authorized write workflow adapters', 'Kafka topics, ACL and consumer groups', 'End-to-end security and failure-isolation tests'] },
-  { id: 11, title: 'Monitoring & Operations', detail: 'Metrics, tracing, logging, usage dashboards and runbooks', progress: 80, done: 4, total: 5, status: 'active', sprints: ['Prometheus metrics contract', 'GPU and VRAM exporter', 'Usage and cost dashboards', 'Alerting, backup and disaster-recovery runbooks', 'OpenTelemetry traces and Loki logs'] },
-  { id: 12, title: 'Multi-Compute Scaling', detail: 'Route workloads across GPU VMs and provider backends', progress: 0, done: 0, total: 5, status: 'planned', sprints: ['Compute node registry', 'Health-aware model routing', 'Queue and back-pressure policy', 'vLLM/NIM provider adapters', 'Multi-node load and failover testing'] },
-  { id: 13, title: 'High Availability & Kubernetes', detail: 'Production resilience, recovery and Kubernetes-ready deployment', progress: 0, done: 0, total: 6, status: 'planned', sprints: ['VM4 horizontal scaling design', 'Database recovery test', 'Compute-plane failure drill', 'Kubernetes manifests and secrets strategy', 'Rolling deployment and rollback plan', 'Capacity and disaster-recovery validation'] },
+  { id: 6, title: 'Agentic RAG', detail: 'Planner, controlled tools, citations and retrieval policies', progress: 80, done: 4, total: 5, status: 'active', sprints: ['Intent and planner policy', 'Controlled tool registry', 'Agent authorization and rate limits', 'Multi-step retrieval and conflict handling', 'Citation and evaluation suite'], blocker: 'evalset' },
+  { id: 7, title: 'GraphRAG', detail: 'Entity relationships, graph projection and relationship-aware answers', progress: 80, done: 4, total: 5, status: 'active', sprints: ['GraphProvider contract', 'AI-owned node and edge schema', 'Entity extraction and source links', 'Graph traversal policy', 'Neo4j migration adapter and evaluation'], blocker: 'neo4j' },
+  { id: 8, title: 'Text-to-SQL', detail: 'Read-only analytics with semantic allowlists and auditability', progress: 0, done: 0, total: 6, status: 'planned', sprints: ['Approved schema and metric catalogue', 'Read-only database account', 'Company and tenant predicate enforcement', 'SQL parser and destructive-query blocklist', 'Timeout, result cap and export controls', 'Query audit and explanation UI'], blocker: 'erp' },
+  { id: 9, title: 'MCP Integration', detail: 'Governed Model Context Protocol tools and execution controls', progress: 80, done: 4, total: 5, status: 'active', sprints: ['MCP client abstraction', 'Tool and permission registry', 'Input validation and scope checks', 'Tool-call rate limits and audit trail', 'Managed ERP, report and notification tools'], blocker: 'erp' },
+  { id: 10, title: 'Enterprise Integration', detail: 'Authorized ERP API adapters and event-driven AI workflows', progress: 0, done: 0, total: 6, status: 'planned', sprints: ['ERP API capability inventory', 'Identity and company-context propagation', 'Read adapters for ERP domains', 'Authorized write workflow adapters', 'Kafka topics, ACL and consumer groups', 'End-to-end security and failure-isolation tests'], blocker: 'erp' },
+  { id: 11, title: 'Monitoring & Operations', detail: 'Metrics, tracing, logging, usage dashboards and runbooks', progress: 80, done: 4, total: 5, status: 'active', sprints: ['Prometheus metrics contract', 'GPU and VRAM exporter', 'Usage and cost dashboards', 'Alerting, backup and disaster-recovery runbooks', 'OpenTelemetry traces and Loki logs'], blocker: 'loki' },
+  { id: 12, title: 'Multi-Compute Scaling', detail: 'Route workloads across GPU VMs and provider backends', progress: 0, done: 0, total: 5, status: 'planned', sprints: ['Compute node registry', 'Health-aware model routing', 'Queue and back-pressure policy', 'vLLM/NIM provider adapters', 'Multi-node load and failover testing'], blocker: 'gpu' },
+  { id: 13, title: 'High Availability & Kubernetes', detail: 'Production resilience, recovery and Kubernetes-ready deployment', progress: 0, done: 0, total: 6, status: 'planned', sprints: ['VM4 horizontal scaling design', 'Database recovery test', 'Compute-plane failure drill', 'Kubernetes manifests and secrets strategy', 'Rolling deployment and rollback plan', 'Capacity and disaster-recovery validation'], blocker: 'cluster' },
 ];
 
 const MODULE_KEYS = ['api', 'module', 'event', 'map', 'flags', 'prompts'] as const;
@@ -252,14 +264,14 @@ function DetailPage({ kind, onBack }: { kind: 'rules' | 'architecture'; onBack: 
   ];
   const stack = [
     ['Portal', 'React 19, Vite, TypeScript and the unified AI workspace UI, calling the Gateway with a scoped API key.'],
-    ['Control Plane', 'Go API on port 8080: configuration, migrations, API keys, rate limits, usage/audit outbox, assistants, conversations and the compute registry.'],
+    ['Control Plane', 'Go API on port 8080: configuration, service-owned migrations, API keys and quotas, usage/audit outbox, assistants and conversations, the compute registry, the knowledge corpus, the relationship graph, the agent orchestrator and a governed MCP client.'],
     ['Compute Plane', 'Ollama in an isolated Docker network with NVIDIA GPU passthrough; qwen2.5:0.5b is the current development smoke-test model.'],
-    ['AI data', 'PostgreSQL 16 with pgvector; AI-owned schema applied by service migrations at startup.'],
+    ['AI data', 'PostgreSQL 16 with pgvector: seven service-owned migrations covering keys, conversations, documents and chunks with 768-dimension embeddings, the graph, agent run traces and the MCP registry.'],
     ['Cache and events', 'Redis 7 holds rate-limit counters under ai:*. Production reuses existing Redis namespaces and Kafka KRaft topics with ACLs.'],
-    ['Identity', 'API keys today. Production integrates with the existing Identity Service JWT, roles, permissions and active-company scope.'],
-    ['Observability', 'Prometheus scrapes /metrics; OpenTelemetry traces export to the existing Tempo when a collector is configured.'],
+    ['Identity', 'Platform-owned API keys today: hashed, scoped, rate-limited per key and per tool, carrying a company, a department and a reading clearance. Production integrates with the existing Identity Service JWT, which is the one decision the portal is still waiting on.'],
+    ['Observability', 'A platform metric contract on /metrics covering tokens, cost, grounding and refusals; a GPU exporter on the compute plane; dashboards and alert rules versioned in infra/. Traces export to Tempo over OTLP when a collector is configured; Loki log shipping is not wired yet.'],
     ['Ingress and deployment', 'Existing Nginx handles TLS/ingress. VM4 and VM5 use separate Docker Compose deployments before a future Kubernetes migration.'],
-    ['Storage and knowledge', 'StorageProvider allows local/NAS/S3/MinIO. pgvector is initial vector store; Qdrant, Milvus and Neo4j remain replaceable adapters.'],
+    ['Storage and knowledge', 'StorageProvider ships a local adapter; NAS, S3 and MinIO remain adapter changes. Retrieval is pgvector cosine fused with PostgreSQL full-text, filtered by company, department and classification before ranking. Qdrant, Milvus and Neo4j remain replaceable behind their contracts.'],
     ['Operational guard', 'VM5 exposes no public port, model/provider access passes through VM4, and ERP always continues when Node 4 is unavailable.'],
   ];
   const items = kind === 'rules' ? rules : stack;
@@ -287,9 +299,20 @@ function DetailPage({ kind, onBack }: { kind: 'rules' | 'architecture'; onBack: 
   );
 }
 
+/**
+ * A phase that is waiting on something outside the repository is not "in
+ * progress": nobody is progressing it. Saying so is the difference between a
+ * roadmap and a wish list.
+ */
+function isBlocked(phase: Phase): boolean {
+  return phase.blocker !== undefined && phase.status !== 'complete';
+}
+
 function Roadmap({ phases, overview, expanded, setExpanded, onUpdate, onAdd }: { phases: Phase[]; overview: Overview; expanded: number | null; setExpanded: (id: number | null) => void; onUpdate: (id: number) => void; onAdd: () => void }) {
   const { t } = useTranslation();
-  const statusLabel = (status: PhaseStatus) => t(`status.${status}` as TranslationKey);
+  const statusLabel = (phase: Phase) =>
+    isBlocked(phase) ? t('status.blocked') : t(`status.${phase.status}` as TranslationKey);
+  const blockedCount = phases.filter(isBlocked).length;
 
   return (
     <>
@@ -299,7 +322,8 @@ function Roadmap({ phases, overview, expanded, setExpanded, onUpdate, onAdd }: {
           <div className="summary-stats">
             <span><b>{overview.progress}%</b> {t('roadmap.overall')}</span>
             <span><b>{overview.done}/{overview.total}</b> {t('roadmap.complete')}</span>
-            <span><b>{overview.active}</b> {t('roadmap.activePhases')}</span>
+            <span><b>{overview.active - blockedCount}</b> {t('roadmap.activePhases')}</span>
+            <span><b>{blockedCount}</b> {t('roadmap.blockedPhases')}</span>
           </div>
         </div>
         <button className="primary" onClick={onAdd}>{t('action.addPhase')}</button>
@@ -315,7 +339,7 @@ function Roadmap({ phases, overview, expanded, setExpanded, onUpdate, onAdd }: {
                 <strong>{phase.title}</strong>
                 <small>{phase.detail}</small>
               </span>
-              <span className={`status ${phase.status}`}>{statusLabel(phase.status)}</span>
+              <span className={`status ${isBlocked(phase) ? 'blocked' : phase.status}`}>{statusLabel(phase)}</span>
               <span className="phase-progress">
                 <Progress value={phase.progress} />
                 <b>{phase.progress}%</b>
@@ -333,6 +357,15 @@ function Roadmap({ phases, overview, expanded, setExpanded, onUpdate, onAdd }: {
                 </ol>
                 <button className="secondary" onClick={() => onUpdate(phase.id)}>{t('action.updateProgress')}</button>
               </div>
+            )}
+            {/* The blocker is shown whether or not the phase is expanded: it is
+                the reason the percentage is not moving, and burying it behind a
+                click is how a roadmap starts lying. */}
+            {isBlocked(phase) && (
+              <p className="phase-blocker">
+                <b>{t('blocker.label')}</b>
+                {t(`blocker.${phase.blocker}` as TranslationKey)}
+              </p>
             )}
           </article>
         ))}
