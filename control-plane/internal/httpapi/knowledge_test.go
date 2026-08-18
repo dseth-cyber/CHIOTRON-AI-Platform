@@ -18,8 +18,14 @@ type fakeDocuments struct {
 	hits     []knowledge.Hit
 	err      error
 	deleted  string
+	restored string
+	purged   string
 	searched knowledge.Access
 	listed   knowledge.Access
+	// trash is what ListDeleted returns, and listedTrash records that it was the
+	// listing the handler chose.
+	trash       []knowledge.Document
+	listedTrash bool
 }
 
 func (f *fakeDocuments) Create(_ context.Context, params knowledge.CreateParams) (knowledge.Document, error) {
@@ -43,12 +49,36 @@ func (f *fakeDocuments) Get(_ context.Context, _ string, access knowledge.Access
 	return f.record, nil
 }
 
+func (f *fakeDocuments) ListDeleted(_ context.Context, access knowledge.Access, _ int) ([]knowledge.Document, error) {
+	f.listed = access
+	f.listedTrash = true
+	return f.trash, f.err
+}
+
 func (f *fakeDocuments) Delete(_ context.Context, id string, access knowledge.Access) (knowledge.Document, error) {
 	f.listed = access
 	if f.err != nil {
 		return knowledge.Document{}, f.err
 	}
 	f.deleted = id
+	return f.record, nil
+}
+
+func (f *fakeDocuments) Restore(_ context.Context, id string, access knowledge.Access) (knowledge.Document, error) {
+	f.listed = access
+	if f.err != nil {
+		return knowledge.Document{}, f.err
+	}
+	f.restored = id
+	return f.record, nil
+}
+
+func (f *fakeDocuments) Purge(_ context.Context, id string, access knowledge.Access) (knowledge.Document, error) {
+	f.listed = access
+	if f.err != nil {
+		return knowledge.Document{}, f.err
+	}
+	f.purged = id
 	return f.record, nil
 }
 
@@ -82,11 +112,28 @@ func (f *fakeEmbedder) Embed(_ context.Context, inputs []string) ([][]float32, e
 	return vectors, nil
 }
 
+// spyStorage wraps a real provider and records deletions.
+//
+// The fake document store cannot produce a document carrying a storage key —
+// the field is unexported, which is deliberate — so what these tests can check
+// is whether the handler reached for storage at all, which is exactly the
+// behaviour that distinguishes a soft delete from a purge.
+type spyStorage struct {
+	storage.Provider
+	deletes []string
+}
+
+func (s *spyStorage) Delete(ctx context.Context, key string) error {
+	s.deletes = append(s.deletes, key)
+	return s.Provider.Delete(ctx, key)
+}
+
 type knowledgeFixture struct {
 	handler   http.Handler
 	documents *fakeDocuments
 	embedder  *fakeEmbedder
 	audit     *fakeAudit
+	storage   *spyStorage
 }
 
 func newKnowledgeFixture(t *testing.T, mutate ...func(*Deps)) knowledgeFixture {
@@ -95,10 +142,11 @@ func newKnowledgeFixture(t *testing.T, mutate ...func(*Deps)) knowledgeFixture {
 	if err != nil {
 		t.Fatalf("NewPolicy() returned error: %v", err)
 	}
-	objects, err := storage.NewLocal(t.TempDir())
+	local, err := storage.NewLocal(t.TempDir())
 	if err != nil {
 		t.Fatalf("NewLocal() returned error: %v", err)
 	}
+	objects := &spyStorage{Provider: local}
 
 	documents := &fakeDocuments{record: sampleDocument()}
 	embedder := &fakeEmbedder{}
@@ -123,7 +171,10 @@ func newKnowledgeFixture(t *testing.T, mutate ...func(*Deps)) knowledgeFixture {
 	for _, apply := range mutate {
 		apply(&deps)
 	}
-	return knowledgeFixture{handler: NewRouter(deps), documents: documents, embedder: embedder, audit: recorder}
+	return knowledgeFixture{
+		handler: NewRouter(deps), documents: documents, embedder: embedder,
+		audit: recorder, storage: objects,
+	}
 }
 
 func sampleDocument() knowledge.Document {
@@ -339,5 +390,113 @@ func TestKnowledgeRoutesRequireACredential(t *testing.T) {
 	}
 	if rec := get(t, fixture.handler, "/api/v1/documents", nil); rec.Code != http.StatusUnauthorized {
 		t.Errorf("GET without a key = %d, want 401", rec.Code)
+	}
+}
+
+// The trash lifecycle. Delete has to be reversible (ARCHITECTURE-v1 section 8),
+// which means the bytes a restore rebuilds from must survive it.
+
+func TestDeleteKeepsTheStoredBytesSoRestoreCanRebuild(t *testing.T) {
+	fixture := newKnowledgeFixture(t)
+
+	rec := authedDelete(t, fixture.handler, "/api/v1/documents/"+sampleDocument().ID)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("DELETE = %d, want 204: %s", rec.Code, rec.Body.String())
+	}
+
+	// A deleted document that has lost its bytes can never come back, which would
+	// make the trash a list of things that only look recoverable.
+	if len(fixture.storage.deletes) != 0 {
+		t.Fatalf("a soft delete removed stored bytes: %v", fixture.storage.deletes)
+	}
+}
+
+func TestListReadsTheTrashWhenAsked(t *testing.T) {
+	fixture := newKnowledgeFixture(t)
+	fixture.documents.trash = []knowledge.Document{sampleDocument()}
+
+	rec := authedGet(t, fixture.handler, "/api/v1/documents?trash=true")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET ?trash=true = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+	if !fixture.documents.listedTrash {
+		t.Fatal("?trash=true did not reach ListDeleted")
+	}
+	// The response says which listing it is, so a client cannot render withdrawn
+	// documents as if they were live.
+	if !strings.Contains(rec.Body.String(), `"trash":true`) {
+		t.Fatalf("response does not declare the trash listing: %s", rec.Body.String())
+	}
+}
+
+func TestTrashListingStillAppliesTheCallersClearance(t *testing.T) {
+	fixture := newKnowledgeFixture(t, withClearance("public"))
+	fixture.documents.trash = []knowledge.Document{sampleDocument()}
+
+	if rec := authedGet(t, fixture.handler, "/api/v1/documents?trash=true"); rec.Code != http.StatusOK {
+		t.Fatalf("GET ?trash=true = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+	// Being in the trash must not widen what a caller may read.
+	for _, level := range fixture.documents.listed.Classifications {
+		if level != "public" {
+			t.Fatalf("trash listing read %v, but this key may only read public", fixture.documents.listed.Classifications)
+		}
+	}
+}
+
+func TestRestoreRequeuesIngestion(t *testing.T) {
+	fixture := newKnowledgeFixture(t)
+
+	rec := authedPost(t, fixture.handler, "/api/v1/documents/"+sampleDocument().ID+"/restore", "")
+	// 202 rather than 200: the row is back but the chunks are not, so the caller
+	// must not treat a restored document as searchable yet.
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("restore = %d, want 202: %s", rec.Code, rec.Body.String())
+	}
+	if fixture.documents.restored != sampleDocument().ID {
+		t.Fatalf("restored %q, want the requested id", fixture.documents.restored)
+	}
+	if action := fixture.audit.lastEvent(t).Action; action != "document.restored" {
+		t.Fatalf("audit action = %q, want document.restored", action)
+	}
+}
+
+func TestPurgeRefusesWithoutAConfirmation(t *testing.T) {
+	fixture := newKnowledgeFixture(t)
+	id := sampleDocument().ID
+
+	rec := authedDelete(t, fixture.handler, "/api/v1/documents/"+id+"/purge")
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("purge without confirm = %d, want 400: %s", rec.Code, rec.Body.String())
+	}
+	if fixture.documents.purged != "" {
+		t.Fatal("an unconfirmed purge destroyed the document anyway")
+	}
+
+	rec = authedDelete(t, fixture.handler, "/api/v1/documents/"+id+"/purge?confirm=wrong-id")
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("purge with a mismatched confirm = %d, want 400", rec.Code)
+	}
+	if fixture.documents.purged != "" {
+		t.Fatal("a mismatched confirmation destroyed the document anyway")
+	}
+}
+
+func TestPurgeRemovesTheBytesOnceConfirmed(t *testing.T) {
+	fixture := newKnowledgeFixture(t)
+	id := sampleDocument().ID
+
+	rec := authedDelete(t, fixture.handler, "/api/v1/documents/"+id+"/purge?confirm="+id)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("confirmed purge = %d, want 204: %s", rec.Code, rec.Body.String())
+	}
+	if fixture.documents.purged != id {
+		t.Fatalf("purged %q, want %q", fixture.documents.purged, id)
+	}
+	if len(fixture.storage.deletes) != 1 {
+		t.Fatalf("purge made %d storage deletions, want exactly 1", len(fixture.storage.deletes))
+	}
+	if action := fixture.audit.lastEvent(t).Action; action != "document.purged" {
+		t.Fatalf("audit action = %q, want document.purged", action)
 	}
 }

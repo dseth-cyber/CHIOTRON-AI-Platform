@@ -148,17 +148,34 @@ func (s *Store) resolveCreateConflict(ctx context.Context, params CreateParams) 
 }
 
 func (s *Store) List(ctx context.Context, access Access, limit int) ([]Document, error) {
+	return s.list(ctx, access, limit, false)
+}
+
+// ListDeleted returns withdrawn documents the caller may still read, so a
+// mistaken withdrawal can be undone (ARCHITECTURE-v1 section 8).
+//
+// It applies the same ACL predicates as List: being in the trash does not make a
+// document readable by somebody who could not read it before.
+func (s *Store) ListDeleted(ctx context.Context, access Access, limit int) ([]Document, error) {
+	return s.list(ctx, access, limit, true)
+}
+
+func (s *Store) list(ctx context.Context, access Access, limit int, deleted bool) ([]Document, error) {
 	if limit <= 0 || limit > 200 {
 		limit = 50
+	}
+	predicate, ordering := "d.deleted_at IS NULL", "d.created_at DESC"
+	if deleted {
+		predicate, ordering = "d.deleted_at IS NOT NULL", "d.deleted_at DESC"
 	}
 	rows, err := s.pool.Query(ctx, `
 		SELECT `+documentColumns+`
 		FROM documents d JOIN knowledge_sources s ON s.id = d.source_id
-		WHERE d.deleted_at IS NULL
+		WHERE `+predicate+`
 		  AND (d.company_id IS NULL OR d.company_id = nullif($1, ''))
 		  AND (d.department IS NULL OR d.department = nullif($2, ''))
 		  AND d.classification = ANY($3)
-		ORDER BY d.created_at DESC
+		ORDER BY `+ordering+`
 		LIMIT $4`, access.CompanyID, access.Department, access.Classifications, limit)
 	if err != nil {
 		return nil, fmt.Errorf("list documents: %w", err)
@@ -229,6 +246,72 @@ func (s *Store) Delete(ctx context.Context, id string, access Access) (Document,
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return Document{}, fmt.Errorf("commit delete: %w", err)
+	}
+	return document, nil
+}
+
+// Restore returns a withdrawn document to the corpus and queues it for
+// ingestion again.
+//
+// Delete removed the chunks, so restoring the row alone would produce a document
+// that appears in the list and answers nothing. Setting it back to pending lets
+// the worker rebuild the chunks, the embeddings and the graph projection from
+// the stored bytes, which is why Delete must not remove those bytes.
+func (s *Store) Restore(ctx context.Context, id string, access Access) (Document, error) {
+	if !isUUID(id) {
+		return Document{}, fmt.Errorf("%w: %q", ErrNotFound, id)
+	}
+	row := s.pool.QueryRow(ctx, `
+		WITH restored AS (
+			UPDATE documents d SET deleted_at = NULL, status = $5, error = NULL, updated_at = now()
+			WHERE d.id = $1::uuid AND d.deleted_at IS NOT NULL
+			  AND (d.company_id IS NULL OR d.company_id = nullif($2, ''))
+			  AND (d.department IS NULL OR d.department = nullif($3, ''))
+			  AND d.classification = ANY($4)
+			RETURNING *
+		)
+		SELECT `+documentColumns+`
+		FROM restored d JOIN knowledge_sources s ON s.id = d.source_id`,
+		id, access.CompanyID, access.Department, access.Classifications, StatusPending)
+
+	document, err := scanDocument(row)
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		return Document{}, fmt.Errorf("%w: %q", ErrNotFound, id)
+	case err != nil:
+		return Document{}, fmt.Errorf("restore document: %w", err)
+	}
+	return document, nil
+}
+
+// Purge removes a withdrawn document permanently. The caller is responsible for
+// deleting the stored bytes afterwards; the row goes last so a failure leaves
+// bytes without a reference rather than a reference without bytes.
+func (s *Store) Purge(ctx context.Context, id string, access Access) (Document, error) {
+	if !isUUID(id) {
+		return Document{}, fmt.Errorf("%w: %q", ErrNotFound, id)
+	}
+	row := s.pool.QueryRow(ctx, `
+		SELECT `+documentColumns+`
+		FROM documents d JOIN knowledge_sources s ON s.id = d.source_id
+		WHERE d.id = $1::uuid AND d.deleted_at IS NOT NULL
+		  AND (d.company_id IS NULL OR d.company_id = nullif($2, ''))
+		  AND (d.department IS NULL OR d.department = nullif($3, ''))
+		  AND d.classification = ANY($4)`,
+		id, access.CompanyID, access.Department, access.Classifications)
+
+	document, err := scanDocument(row)
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		// A document that is not in the trash cannot be purged: permanent removal
+		// is deliberately a second step, never the first one.
+		return Document{}, fmt.Errorf("%w: %q", ErrNotFound, id)
+	case err != nil:
+		return Document{}, fmt.Errorf("read document for purge: %w", err)
+	}
+
+	if _, err := s.pool.Exec(ctx, `DELETE FROM documents WHERE id = $1::uuid`, id); err != nil {
+		return Document{}, fmt.Errorf("purge document: %w", err)
 	}
 	return document, nil
 }

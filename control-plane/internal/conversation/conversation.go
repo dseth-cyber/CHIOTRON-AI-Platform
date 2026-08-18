@@ -97,14 +97,34 @@ func (s *Store) Create(ctx context.Context, owner Owner, assistantID string) (Co
 }
 
 func (s *Store) List(ctx context.Context, actorID string, limit int) ([]Conversation, error) {
+	return s.list(ctx, actorID, limit, false)
+}
+
+// ListDeleted returns what the caller has thrown away but not yet purged, so a
+// mistaken delete can be undone (ARCHITECTURE-v1 section 8).
+func (s *Store) ListDeleted(ctx context.Context, actorID string, limit int) ([]Conversation, error) {
+	return s.list(ctx, actorID, limit, true)
+}
+
+func (s *Store) list(ctx context.Context, actorID string, limit int, deleted bool) ([]Conversation, error) {
 	if limit <= 0 || limit > 200 {
 		limit = 50
+	}
+	// The predicate is chosen here rather than interpolated, so the two listings
+	// cannot drift apart or accidentally return both sets at once.
+	predicate := "c.deleted_at IS NULL"
+	ordering := "c.updated_at DESC"
+	if deleted {
+		predicate = "c.deleted_at IS NOT NULL"
+		// The trash reads most-recently-discarded first: that is the one somebody
+		// arriving here is most likely looking for.
+		ordering = "c.deleted_at DESC"
 	}
 	rows, err := s.pool.Query(ctx, `
 		SELECT `+listColumns+`
 		FROM conversations c LEFT JOIN assistants a ON a.id = c.assistant_id
-		WHERE c.actor_id = $1 AND c.deleted_at IS NULL
-		ORDER BY c.updated_at DESC
+		WHERE c.actor_id = $1 AND `+predicate+`
+		ORDER BY `+ordering+`
 		LIMIT $2`, actorID, limit)
 	if err != nil {
 		return nil, fmt.Errorf("list conversations: %w", err)
@@ -248,6 +268,26 @@ func (s *Store) Delete(ctx context.Context, id, actorID string) error {
 		WHERE id = $1::uuid AND actor_id = $2 AND deleted_at IS NULL`, id, actorID)
 	if err != nil {
 		return fmt.Errorf("delete conversation: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("%w: %q", ErrNotFound, id)
+	}
+	return nil
+}
+
+// Restore returns a soft-deleted conversation to the caller's history.
+//
+// It matches only rows that are actually deleted, so restoring something already
+// live reads as missing rather than silently doing nothing.
+func (s *Store) Restore(ctx context.Context, id, actorID string) error {
+	if !isUUID(id) {
+		return fmt.Errorf("%w: %q", ErrNotFound, id)
+	}
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE conversations SET deleted_at = NULL, updated_at = now()
+		WHERE id = $1::uuid AND actor_id = $2 AND deleted_at IS NOT NULL`, id, actorID)
+	if err != nil {
+		return fmt.Errorf("restore conversation: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
 		return fmt.Errorf("%w: %q", ErrNotFound, id)

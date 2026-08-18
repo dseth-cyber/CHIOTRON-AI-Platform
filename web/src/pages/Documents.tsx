@@ -1,9 +1,16 @@
 import { useState } from 'react';
-import { deleteDocument, uploadDocument, type Document } from '../api';
+import {
+  deleteDocument,
+  purgeDocument,
+  restoreDocument,
+  uploadDocument,
+  type Document,
+} from '../api';
 import { DataTable, type Column } from '../components/DataTable';
 import { EmptyState, Tag } from '../components/EmptyState';
 import { FavoriteButton } from '../components/FavoriteButton';
 import { SearchableSelect } from '../components/SearchableSelect';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { Modal } from '../Modal';
 import { useDocuments, useFavorites, useRefreshDocuments, useScopes } from '../hooks';
 import { useTranslation } from '../LanguageContext';
@@ -19,7 +26,10 @@ export function Documents() {
   const canRead = has(SCOPE_KNOWLEDGE_READ);
   const canWrite = has(SCOPE_KNOWLEDGE_WRITE);
 
-  const documents = useDocuments(canRead);
+  const [showTrash, setShowTrash] = useState(false);
+  const [confirming, setConfirming] = useState<Document | null>(null);
+  const [purging, setPurging] = useState<Document | null>(null);
+  const documents = useDocuments(canRead, showTrash);
   const favorites = useFavorites(has(SCOPE_CHAT));
   const refresh = useRefreshDocuments();
   const [showUpload, setShowUpload] = useState(false);
@@ -33,14 +43,30 @@ export function Documents() {
     (favorites.data ?? []).filter((mark) => mark.kind === 'document').map((mark) => mark.targetId),
   );
 
+  // Withdrawing is reversible: the chunks go so the document stops answering,
+  // the bytes stay so a restore can rebuild them.
   const remove = async (document: Document) => {
+    await deleteDocument(document.id);
+    setConfirming(null);
+    refresh();
+  };
+
+  const restore = async (document: Document) => {
     setError('');
     try {
-      await deleteDocument(document.id);
+      await restoreDocument(document.id);
       refresh();
     } catch (failed) {
-      setError(failed instanceof Error ? failed.message : t('documents.error.delete'));
+      setError(failed instanceof Error ? failed.message : t('documents.error.restore'));
     }
+  };
+
+  // Purging is the only irreversible action on this page, which is why it asks
+  // for the title to be typed back (ARCHITECTURE-v1 section 43).
+  const purge = async (document: Document) => {
+    await purgeDocument(document.id);
+    setPurging(null);
+    refresh();
   };
 
   const columns: Column<Document>[] = [
@@ -120,11 +146,21 @@ export function Documents() {
       key: 'delete',
       header: t('history.column.actions'),
       align: 'end',
-      cell: (row) => (
-        <button className="danger-button" disabled={!canWrite} onClick={() => void remove(row)}>
-          {t('action.delete')}
-        </button>
-      ),
+      cell: (row) =>
+        showTrash ? (
+          <span className="row-actions">
+            <button className="secondary" disabled={!canWrite} onClick={() => void restore(row)}>
+              {t('action.restore')}
+            </button>
+            <button className="danger-button" disabled={!canWrite} onClick={() => setPurging(row)}>
+              {t('action.purge')}
+            </button>
+          </span>
+        ) : (
+          <button className="danger-button" disabled={!canWrite} onClick={() => setConfirming(row)}>
+            {t('action.delete')}
+          </button>
+        ),
     },
   ];
 
@@ -133,7 +169,7 @@ export function Documents() {
   return (
     <>
       <section className="page-intro">
-        <p>{t('documents.intro')}</p>
+        <p>{showTrash ? t('documents.trashIntro') : t('documents.intro')}</p>
         <span>
           {readable.length > 0
             ? t('documents.readable', { list: readable.join(', ') })
@@ -147,14 +183,42 @@ export function Documents() {
         rowKey={(row) => row.id}
         loading={documents.isPending}
         error={error || (documents.isError ? documents.error.message : undefined)}
-        empty={t('documents.empty')}
-        pageSize={12}
+        empty={showTrash ? t('documents.trashEmpty') : t('documents.empty')}
+        trash={{ showing: showTrash, onToggle: setShowTrash }}
         actions={
-          <button className="primary" disabled={!canWrite} onClick={() => setShowUpload(true)}>
+          <button
+            className="primary"
+            disabled={!canWrite || showTrash}
+            onClick={() => setShowUpload(true)}
+          >
             {canWrite ? t('action.upload') : t('documents.uploadNeedsScope')}
           </button>
         }
       />
+
+      {confirming && (
+        <ConfirmDialog
+          title={t('documents.confirmDelete.title')}
+          body={t('documents.confirmDelete.body', { title: confirming.title })}
+          confirmLabel={t('action.moveToTrash')}
+          destructive
+          onCancel={() => setConfirming(null)}
+          onConfirm={() => remove(confirming)}
+        />
+      )}
+
+      {purging && (
+        <ConfirmDialog
+          title={t('documents.confirmPurge.title')}
+          body={t('documents.confirmPurge.body', { title: purging.title })}
+          caution={t('documents.confirmPurge.caution')}
+          confirmLabel={t('action.purge')}
+          confirmationCode={purging.title}
+          destructive
+          onCancel={() => setPurging(null)}
+          onConfirm={() => purge(purging)}
+        />
+      )}
 
       {showUpload && (
         <UploadDialog

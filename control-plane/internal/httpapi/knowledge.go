@@ -21,7 +21,10 @@ type DocumentStore interface {
 	Create(ctx context.Context, params knowledge.CreateParams) (knowledge.Document, error)
 	List(ctx context.Context, access knowledge.Access, limit int) ([]knowledge.Document, error)
 	Get(ctx context.Context, id string, access knowledge.Access) (knowledge.Document, error)
+	ListDeleted(ctx context.Context, access knowledge.Access, limit int) ([]knowledge.Document, error)
 	Delete(ctx context.Context, id string, access knowledge.Access) (knowledge.Document, error)
+	Restore(ctx context.Context, id string, access knowledge.Access) (knowledge.Document, error)
+	Purge(ctx context.Context, id string, access knowledge.Access) (knowledge.Document, error)
 	Search(ctx context.Context, query string, embedding []float32, access knowledge.Access, limit int) ([]knowledge.Hit, error)
 	Stats(ctx context.Context, access knowledge.Access) (map[string]int, error)
 }
@@ -208,7 +211,16 @@ func registerKnowledge(mux *http.ServeMux, d Deps) {
 			limit = parsed
 		}
 
-		documents, err := k.Documents.List(r.Context(), access, limit)
+		// The trash is the same corpus under the opposite predicate rather than a
+		// separate endpoint, so a caller cannot reach withdrawn documents through
+		// a route that forgot to apply the ACL.
+		trash := r.URL.Query().Get("trash") == "true"
+		list := k.Documents.List
+		if trash {
+			list = k.Documents.ListDeleted
+		}
+
+		documents, err := list(r.Context(), access, limit)
 		if err != nil {
 			d.writeKnowledgeError(w, err, "list documents")
 			return
@@ -224,6 +236,7 @@ func registerKnowledge(mux *http.ServeMux, d Deps) {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"documents": documents,
 			"status":    stats,
+			"trash":     trash,
 			// Tells a client what it is allowed to see, which is what makes an
 			// empty result interpretable.
 			"readableClassifications": access.Classifications,
@@ -260,13 +273,13 @@ func registerKnowledge(mux *http.ServeMux, d Deps) {
 			return
 		}
 
-		// The stored object is removed after the row, so a failure here leaves
-		// bytes without a reference rather than a reference without bytes.
-		if err := k.Storage.Delete(r.Context(), document.StorageKey()); err != nil {
-			d.Log.Error("delete stored bytes", "documentId", document.ID, "error", err)
-		}
-		// A withdrawn document must stop answering through the graph too, or its
-		// relationships would outlive the text that evidenced them.
+		// The stored bytes stay. Delete is reversible (ARCHITECTURE-v1 section 8):
+		// the chunks are gone, so the document stops answering immediately, and
+		// the bytes are what a restore rebuilds them from. Removing them here
+		// would make the trash a list of things that can never come back.
+		//
+		// The graph is forgotten, because a withdrawn document must stop
+		// answering through its relationships too. Re-ingestion rebuilds them.
 		if k.Graph != nil {
 			if err := k.Graph.Forget(r.Context(), document.ID); err != nil {
 				d.Log.Error("forget document graph", "documentId", document.ID, "error", err)
@@ -277,6 +290,70 @@ func registerKnowledge(mux *http.ServeMux, d Deps) {
 			ActorID: caller.KeyID, APIKeyID: caller.KeyID, CompanyID: caller.CompanyID,
 			Action: "document.deleted", ResourceType: "document", ResourceID: document.ID,
 			Metadata: map[string]any{"title": document.Title},
+		})
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	mux.HandleFunc("POST /api/v1/documents/{id}/restore", d.guard(auth.ScopeKnowledgeWrite, func(w http.ResponseWriter, r *http.Request) {
+		caller, _ := auth.IdentityFrom(r.Context())
+		access, err := k.access(caller)
+		if err != nil {
+			d.writeKnowledgeError(w, err, "derive access")
+			return
+		}
+
+		document, err := k.Documents.Restore(r.Context(), r.PathValue("id"), access)
+		if err != nil {
+			d.writeKnowledgeError(w, err, "restore document")
+			return
+		}
+
+		d.Audit.Record(r.Context(), audit.Event{
+			ActorID: caller.KeyID, APIKeyID: caller.KeyID, CompanyID: caller.CompanyID,
+			Action: "document.restored", ResourceType: "document", ResourceID: document.ID,
+			Metadata: map[string]any{"title": document.Title},
+		})
+		// 202, not 200: the row is back but the chunks are not. The worker has to
+		// re-ingest before this document answers anything again.
+		writeJSON(w, http.StatusAccepted, map[string]any{"document": document})
+	}))
+
+	// Permanent removal is a separate verb on a separate path, reachable only for
+	// something already in the trash. One click must never destroy anything
+	// (ARCHITECTURE-v1 section 8); the confirmation itself is the client's job,
+	// but the two-step shape is enforced here.
+	mux.HandleFunc("DELETE /api/v1/documents/{id}/purge", d.guard(auth.ScopeKnowledgeWrite, func(w http.ResponseWriter, r *http.Request) {
+		caller, _ := auth.IdentityFrom(r.Context())
+		access, err := k.access(caller)
+		if err != nil {
+			d.writeKnowledgeError(w, err, "derive access")
+			return
+		}
+
+		// The caller has to name what it is destroying. A purge fired at the wrong
+		// id by a mis-wired client is refused rather than obeyed.
+		if confirm := r.URL.Query().Get("confirm"); confirm != r.PathValue("id") {
+			writeJSON(w, http.StatusBadRequest, map[string]string{
+				"error": "purge requires ?confirm= to repeat the document id",
+			})
+			return
+		}
+
+		document, err := k.Documents.Purge(r.Context(), r.PathValue("id"), access)
+		if err != nil {
+			d.writeKnowledgeError(w, err, "purge document")
+			return
+		}
+
+		// The row is gone, so the bytes are now unreferenced and safe to remove.
+		if err := k.Storage.Delete(r.Context(), document.StorageKey()); err != nil {
+			d.Log.Error("delete stored bytes", "documentId", document.ID, "error", err)
+		}
+
+		d.Audit.Record(r.Context(), audit.Event{
+			ActorID: caller.KeyID, APIKeyID: caller.KeyID, CompanyID: caller.CompanyID,
+			Action: "document.purged", ResourceType: "document", ResourceID: document.ID,
+			Metadata: map[string]any{"title": document.Title, "bytes": document.ByteSize},
 		})
 		w.WriteHeader(http.StatusNoContent)
 	}))

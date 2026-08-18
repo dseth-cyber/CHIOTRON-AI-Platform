@@ -132,6 +132,11 @@ type fakeConversations struct {
 	getErr    error
 	appendErr error
 	persist   bool
+	restored  string
+	// trash is what ListDeleted returns, and listedTrash records that it was the
+	// listing the handler chose.
+	trash       []conversation.Conversation
+	listedTrash bool
 	// actors records which owner each read was scoped to.
 	actors []string
 }
@@ -151,6 +156,21 @@ func (f *fakeConversations) List(_ context.Context, actorID string, _ int) ([]co
 		return nil, nil
 	}
 	return []conversation.Conversation{f.record}, nil
+}
+
+func (f *fakeConversations) ListDeleted(_ context.Context, actorID string, _ int) ([]conversation.Conversation, error) {
+	f.actors = append(f.actors, actorID)
+	f.listedTrash = true
+	return f.trash, nil
+}
+
+func (f *fakeConversations) Restore(_ context.Context, id, actorID string) error {
+	f.actors = append(f.actors, actorID)
+	if f.getErr != nil {
+		return f.getErr
+	}
+	f.restored = id
+	return nil
 }
 
 func (f *fakeConversations) Get(_ context.Context, _, actorID string) (conversation.Conversation, error) {

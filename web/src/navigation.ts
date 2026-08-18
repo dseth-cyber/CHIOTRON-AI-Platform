@@ -6,6 +6,8 @@
 export type View =
   | 'home'
   | 'chat'
+  | 'analyze'
+  | 'create'
   | 'history'
   | 'assistants'
   | 'documents'

@@ -15,6 +15,9 @@ export type Column<Row> = {
 
 type Sort = { key: string; direction: 'asc' | 'desc' };
 
+/** ARCHITECTURE-v1 section 38 fixes the page-size choices. */
+const PAGE_SIZES = [10, 20, 50, 100];
+
 /**
  * The shared table: loading, sorting, column selection and pagination.
  *
@@ -30,8 +33,8 @@ export function DataTable<Row>({
   loading = false,
   error,
   empty,
-  pageSize = 10,
   actions,
+  trash,
 }: {
   columns: Column<Row>[];
   rows: Row[];
@@ -39,12 +42,14 @@ export function DataTable<Row>({
   loading?: boolean;
   error?: string;
   empty?: ReactNode;
-  pageSize?: number;
   actions?: ReactNode;
+  /** Present when the caller has a trash view to toggle into (section 43). */
+  trash?: { showing: boolean; onToggle: (showing: boolean) => void; count?: number };
 }) {
   const { t, formatNumber } = useTranslation();
   const [sort, setSort] = useState<Sort | null>(null);
   const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(PAGE_SIZES[0]!);
   const [showPicker, setShowPicker] = useState(false);
   const [visible, setVisible] = useState<Set<string>>(
     () => new Set(columns.filter((column) => !column.hidden).map((column) => column.key)),
@@ -68,7 +73,8 @@ export function DataTable<Row>({
   const pageCount = Math.max(1, Math.ceil(sorted.length / pageSize));
   // A page that no longer exists after a filter would render blank, so clamp.
   const current = Math.min(page, pageCount - 1);
-  const visibleRows = sorted.slice(current * pageSize, current * pageSize + pageSize);
+  const from = current * pageSize;
+  const visibleRows = sorted.slice(from, from + pageSize);
 
   const toggleSort = (column: Column<Row>) => {
     if (!column.sortValue) return;
@@ -85,9 +91,19 @@ export function DataTable<Row>({
       <header className="table-bar">
         <div className="table-actions">{actions}</div>
         <div className="table-tools">
-          <span className="table-count">
-            {t('table.rows', { count: formatNumber(sorted.length) })}
-          </span>
+          {trash && (
+            <button
+              className={trash.showing ? 'toggle-button on' : 'toggle-button'}
+              aria-pressed={trash.showing}
+              onClick={() => {
+                trash.onToggle(!trash.showing);
+                setPage(0);
+              }}
+            >
+              🗑 {t('table.trash')}
+              {trash.count ? ` (${formatNumber(trash.count)})` : ''}
+            </button>
+          )}
           <button className="text-button" onClick={() => setShowPicker((open) => !open)}>
             {t('table.columns')}
           </button>
@@ -177,8 +193,35 @@ export function DataTable<Row>({
         </table>
       </div>
 
-      {pageCount > 1 && (
-        <footer className="table-pager">
+      <footer className="table-pager">
+        {/* Section 38 wants the range, not just the total: "20 rows" does not
+            tell somebody on page three what they are looking at. */}
+        <span className="table-count">
+          {loading
+            ? t('table.loading')
+            : t('table.range', {
+                from: formatNumber(sorted.length === 0 ? 0 : from + 1),
+                to: formatNumber(Math.min(from + pageSize, sorted.length)),
+                total: formatNumber(sorted.length),
+              })}
+        </span>
+        <label className="page-size">
+          <span>{t('table.perPage')}</span>
+          {PAGE_SIZES.map((size) => (
+            <button
+              key={size}
+              className={size === pageSize ? 'size on' : 'size'}
+              aria-pressed={size === pageSize}
+              onClick={() => {
+                setPageSize(size);
+                setPage(0);
+              }}
+            >
+              {size}
+            </button>
+          ))}
+        </label>
+        <span className="pager-buttons">
           <button className="secondary" disabled={current === 0} onClick={() => setPage(current - 1)}>
             {t('table.previous')}
           </button>
@@ -190,8 +233,9 @@ export function DataTable<Row>({
           >
             {t('table.next')}
           </button>
-        </footer>
-      )}
+        </span>
+      </footer>
+
     </section>
   );
 }

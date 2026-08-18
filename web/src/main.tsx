@@ -24,6 +24,8 @@ import { Search } from './pages/Search';
 import { Favorites } from './pages/Favorites';
 import { Settings } from './pages/Settings';
 import { SharedChats } from './pages/SharedChats';
+import { Analyze } from './pages/Analyze';
+import { Create } from './pages/Create';
 
 type PhaseStatus = 'complete' | 'active' | 'planned';
 /**
@@ -49,7 +51,7 @@ const initialPhases: Phase[] = [
   { id: 2, title: 'AI Gateway', detail: 'JWT/API key enforcement, quota, streaming, usage and audit outbox', progress: 80, done: 4, total: 5, status: 'active', sprints: ['Health and platform discovery endpoint available', 'API keys, scopes and rotation', 'Usage metadata and audit outbox', 'Rate limits, quota and SSE streaming', 'JWT validation and active-company guard'], blocker: 'identity' },
   // Section 10 lists nine pages; eight are built. Shared Chats is the ninth and
   // cannot be, because a conversation belongs to a key rather than a person.
-  { id: 3, title: 'User Portal', detail: 'Assistant-first workspace, history, permissions and multilingual UI', progress: 88, done: 7, total: 8, status: 'active', sprints: ['Application shell and Developer Portal delivered', 'Roadmap tracking UI delivered', 'Gateway-connected portal and chat workspace', 'Permission-aware grouped navigation', 'Assistant catalogue and conversation history', 'Thai, English, Chinese, Burmese and Japanese i18n', 'Home, Documents, Search, Favorites and Settings pages', 'Shared chats across users'], blocker: 'identity' },
+  { id: 3, title: 'User Portal', detail: 'Assistant-first workspace, history, permissions and multilingual UI', progress: 82, done: 9, total: 11, status: 'active', sprints: ['Application shell and Developer Portal delivered', 'Roadmap tracking UI delivered', 'Gateway-connected portal and chat workspace', 'Permission-aware grouped navigation', 'Assistant catalogue and conversation history', 'Thai, English, Chinese, Burmese and Japanese i18n', 'Home, Documents, Search, Favorites and Settings pages', 'Shared UI rules: SearchableSelect, table UX, trash and restore', 'Analyze and Create workspaces', 'Vision and image generation workspaces', 'Shared chats across users'], blocker: 'identity' },
   { id: 4, title: 'Local LLM', detail: 'Provider routing, compute health and isolated local inference', progress: 100, done: 5, total: 5, status: 'complete', sprints: ['Ollama Compute Plane running', 'NVIDIA GPU passthrough verified', 'Qwen smoke-test model loaded', 'Provider-neutral Ollama adapter', 'Compute registry and model router'] },
   { id: 5, title: 'Knowledge Platform', detail: 'Document ACL, ingestion, embedding pipeline and hybrid search', progress: 100, done: 6, total: 6, status: 'complete', sprints: ['StorageProvider and source configuration', 'Document upload contract', 'ACL metadata and classification policy', 'Parser, chunking and provenance', 'Embedding worker and pgvector storage', 'Permission-filtered hybrid retrieval'] },
   { id: 6, title: 'Agentic RAG', detail: 'Planner, controlled tools, citations and retrieval policies', progress: 80, done: 4, total: 5, status: 'active', sprints: ['Intent and planner policy', 'Controlled tool registry', 'Agent authorization and rate limits', 'Multi-step retrieval and conflict handling', 'Citation and evaluation suite'], blocker: 'evalset' },
@@ -83,6 +85,8 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { view: 'home', mark: 'HM', label: 'nav.home' },
       { view: 'chat', mark: 'NC', label: 'nav.newChat', scopes: [SCOPE_CHAT, SCOPE_ASSISTANTS_READ], reason: 'nav.chatDisabled' },
+      { view: 'analyze', mark: 'AN', label: 'nav.analyze', scopes: [SCOPE_CHAT], reason: 'nav.historyDisabled' },
+      { view: 'create', mark: 'CR', label: 'nav.create', scopes: [SCOPE_CHAT], reason: 'nav.historyDisabled' },
       { view: 'history', mark: 'HI', label: 'nav.history', scopes: [SCOPE_CHAT], reason: 'nav.historyDisabled' },
       { view: 'assistants', mark: 'AS', label: 'nav.assistants', scopes: [SCOPE_ASSISTANTS_READ], reason: 'nav.assistantsDisabled' },
       { view: 'favorites', mark: 'FV', label: 'nav.favorites', scopes: [SCOPE_CHAT], reason: 'nav.historyDisabled' },
@@ -194,6 +198,8 @@ function App() {
             onNavigate={navigate}
           />
         )}
+        {view === 'analyze' && <Analyze />}
+        {view === 'create' && <Create />}
         {view === 'history' && <History onNavigate={navigate} />}
         {view === 'assistants' && <Assistants onNavigate={navigate} />}
         {view === 'documents' && <Documents />}

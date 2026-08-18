@@ -92,6 +92,7 @@ export type StoredMessage = {
 
 export type ConversationList = {
   conversations: ConversationSummary[];
+  trash?: boolean;
   promptsPersisted: boolean;
 };
 
@@ -122,6 +123,8 @@ export type Document = {
 
 export type DocumentList = {
   documents: Document[];
+  /** Whether this listing is the trash, so a client cannot render one as the other. */
+  trash?: boolean;
   /** Counts by status, so a page can say how much of the corpus is searchable. */
   status: Record<string, number>;
   readableClassifications: string[];
@@ -240,13 +243,13 @@ export const fetchComputeHealth = (signal?: AbortSignal) =>
   get<ComputeHealth>('/api/v1/compute/health', signal);
 export const fetchAssistants = (signal?: AbortSignal) =>
   get<{ assistants: Assistant[] }>('/api/v1/assistants', signal);
-export const fetchConversations = (signal?: AbortSignal) =>
-  get<ConversationList>('/api/v1/conversations', signal);
+export const fetchConversations = (trash: boolean, signal?: AbortSignal) =>
+  get<ConversationList>(`/api/v1/conversations${trash ? '?trash=true' : ''}`, signal);
 export const fetchConversation = (id: string, signal?: AbortSignal) =>
   get<ConversationDetail>(`/api/v1/conversations/${encodeURIComponent(id)}`, signal);
 
-export const fetchDocuments = (signal?: AbortSignal) =>
-  get<DocumentList>('/api/v1/documents', signal);
+export const fetchDocuments = (trash: boolean, signal?: AbortSignal) =>
+  get<DocumentList>(`/api/v1/documents${trash ? '?trash=true' : ''}`, signal);
 export const fetchFavorites = (signal?: AbortSignal) =>
   get<{ favorites: Favorite[] }>('/api/v1/favorites', signal);
 export const fetchGraph = (term: string, signal?: AbortSignal) =>
@@ -268,6 +271,10 @@ export async function deleteConversation(id: string): Promise<void> {
   await send('DELETE', `/api/v1/conversations/${encodeURIComponent(id)}`);
 }
 
+export async function restoreConversation(id: string): Promise<void> {
+  await send('POST', `/api/v1/conversations/${encodeURIComponent(id)}/restore`);
+}
+
 export type UploadRequest = {
   title: string;
   content: string;
@@ -286,6 +293,21 @@ export const uploadDocument = (request: UploadRequest) =>
 
 export async function deleteDocument(id: string): Promise<void> {
   await send('DELETE', `/api/v1/documents/${encodeURIComponent(id)}`);
+}
+
+/** Restore answers 202: the row is back, but re-ingestion has not run yet. */
+export const restoreDocument = (id: string) =>
+  send<{ document: Document }>('POST', `/api/v1/documents/${encodeURIComponent(id)}/restore`);
+
+/**
+ * Permanently destroys a withdrawn document.
+ *
+ * The id is repeated as `confirm` because the gateway refuses a purge that does
+ * not name what it is destroying — a second, deliberate step, never the first.
+ */
+export async function purgeDocument(id: string): Promise<void> {
+  const encoded = encodeURIComponent(id);
+  await send('DELETE', `/api/v1/documents/${encoded}/purge?confirm=${encoded}`);
 }
 
 export const searchKnowledge = (query: string, limit?: number) =>

@@ -10,6 +10,7 @@ import {
   type Language,
   type TranslationKey,
 } from './i18n';
+import { SearchableSelect } from './components/SearchableSelect';
 
 type Translator = (key: TranslationKey, params?: Record<string, string | number>) => string;
 
@@ -61,20 +62,22 @@ export function useTranslation(): LanguageValue {
 export function LanguageSwitcher() {
   const { language, setLanguage, t } = useTranslation();
 
+  // ARCHITECTURE-v1 section 36: every dropdown is a SearchableSelect. A native
+  // <select> renders differently on every platform and cannot be filtered, which
+  // is why the rule exists even for a list this short.
   return (
-    <label className="field inline language">
-      <span className="visually-hidden">{t('lang.label')}</span>
-      <select
+    <div className="topbar-language">
+      <SearchableSelect
+        label={t('lang.label')}
+        labelHidden
         value={language}
-        aria-label={t('lang.label')}
-        onChange={(event) => setLanguage(event.target.value as Language)}
-      >
-        {LANGUAGES.map((option) => (
-          <option key={option} value={option}>
-            {LANGUAGE_NAMES[option]}
-          </option>
-        ))}
-      </select>
-    </label>
+        options={LANGUAGES.map((option) => ({
+          value: option,
+          label: LANGUAGE_NAMES[option],
+          detail: option,
+        }))}
+        onChange={(next) => setLanguage(next as Language)}
+      />
+    </div>
   );
 }

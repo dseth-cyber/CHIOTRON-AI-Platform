@@ -36,12 +36,15 @@ Ollama and model credentials are deliberately never exposed to browsers.
 | `GET /api/v1/models` | Logical models, the route behind each one, and whether the upstream model is loaded. Needs `models:read`. |
 | `POST /api/v1/chat/completions` | Non-streaming completion. Needs `chat:completions`. |
 | `GET /api/v1/assistants` | Assistant catalogue, filtered by the caller's company. Needs `assistants:read`. |
-| `GET /api/v1/conversations` | The caller's own conversations. Needs `chat:completions`. |
+| `GET /api/v1/conversations` | The caller's own conversations. `?trash=true` reads deleted ones. Needs `chat:completions`. |
 | `GET/DELETE /api/v1/conversations/{id}` | One transcript, or soft-delete it. Needs `chat:completions`. |
+| `POST /api/v1/conversations/{id}/restore` | Undo a soft delete. Needs `chat:completions`. |
 | `POST /api/v1/documents` | Upload a document for ingestion. Needs `knowledge:write`. |
-| `GET /api/v1/documents` | Documents the caller may read, plus corpus status. Needs `knowledge:read`. |
+| `GET /api/v1/documents` | Documents the caller may read, plus corpus status. `?trash=true` reads withdrawn ones. Needs `knowledge:read`. |
 | `GET /api/v1/documents/{id}` | One document. Needs `knowledge:read`. |
-| `DELETE /api/v1/documents/{id}` | Withdraw a document and its chunks. Needs `knowledge:write`. |
+| `DELETE /api/v1/documents/{id}` | Withdraw a document and its chunks. Reversible; the bytes are kept. Needs `knowledge:write`. |
+| `POST /api/v1/documents/{id}/restore` | Return a withdrawn document and requeue ingestion. Needs `knowledge:write`. |
+| `DELETE /api/v1/documents/{id}/purge` | Destroy a withdrawn document permanently. Requires `?confirm=` to repeat the id. Needs `knowledge:write`. |
 | `POST /api/v1/knowledge/search` | Permission-filtered hybrid retrieval. Needs `knowledge:read`. |
 | `GET /api/v1/graph/neighbours` | Relationship traversal from a term. Needs `knowledge:read`. |
 | `GET /api/v1/favorites` | The caller's own marks, resolved against what it may still read. Needs `chat:completions`. |
@@ -280,13 +283,27 @@ The portal is the only browser client and it talks to the Control Plane only (AR
 
 | Group | Pages |
 |---|---|
-| Workspace | Home, New chat, History, Assistants, Favorites, Shared chats |
+| Workspace | Home, New chat, Analyze, Create, History, Assistants, Favorites, Shared chats |
 | Knowledge | Documents, Search |
 | Platform | Developer Portal, Roadmap, Settings |
 
+Section 11 also names five workspaces. Chat, Analyze, Create and Search exist. The ERP workspace does not, and cannot until the ERP API inventory arrives — it is Phase 8 and Phase 10 work, not a page that can be written now.
+
 Eight of the nine pages section 10 names are built. **Shared chats is not, and the page in that slot says so** rather than pretending: a conversation belongs to an API key, not to a person, so two people sharing a key already share a history and one person holding two keys shares none. Sharing needs an owner that survives a key rotation, which is the Identity Service contract section 13 item 2 is waiting on.
 
-**Shared components.** `SearchableSelect`, `DataTable` and `EmptyState` under `web/src/components/` are used by every page, so sorting, column selection, paging, loading and empty states behave identically wherever they appear. `web/src/theme.ts` holds the one theme: it is installed as CSS custom properties before the first render, and a component that hard-codes a colour is how a design drifts one page at a time.
+**Shared components.** `SearchableSelect`, `DataTable`, `EmptyState` and `ConfirmDialog` under `web/src/components/` are used by every page, so sorting, column selection, paging, loading and empty states behave identically wherever they appear. `web/src/theme.ts` holds the one theme: it is installed as CSS custom properties before the first render, and a component that hard-codes a colour is how a design drifts one page at a time.
+
+There is no native `<select>` and no `confirm()` anywhere in `web/src` (sections 36 and 43). Tables offer 10/20/50/100 rows a page and report the range rather than only the total, because "20 rows" tells somebody on page three nothing about what they are looking at.
+
+**Analyze.** Reads a `.txt`, `.md`, `.csv`, `.tsv`, `.json` or `.log` file **in the browser** and runs summarize, key points, translate, rewrite, extract-a-table or a free question over it. The file is never uploaded: analysing something is not the same as filing it in the corpus, and a document somebody only wanted a summary of should not acquire a classification, an owner and a permanent row. CSV and TSV are parsed for a preview table, quoted fields included, because a preview that splits on a quoted comma shows a table that does not match the file. Long files are truncated at 40,000 characters and the page says so. Excel, PDF and image analysis are **not** offered: parsing the first two needs a dependency the platform does not carry, and images need a vision model the compute plane does not run.
+
+**Create.** Drafts a report, document, email, presentation outline or code from a brief, with audience, tone, length and output language, then streams it with copy and download. Image and chart generation are **not** offered: the compute plane runs one 0.5B text model on a 2 GB card and there is no image model to route to.
+
+Both are stateless — they send `messages` rather than an assistant and a conversation — so a file analysis or a draft never turns up in somebody's history.
+
+**Trash and restore.** Nothing is destroyed by one click (section 43). Deleting a conversation or a document is a soft delete behind a `ConfirmDialog`; both pages have a trash toggle that lists what was thrown away under the same ACL predicates, and restore puts it back. Restoring a document returns 202 rather than 200 and sets it back to `pending`, because the row is back but the chunks are not until the worker re-ingests. Permanent destruction is a separate verb on a separate path, reachable only for something already in the trash, and refuses unless the request repeats the document id — the UI asks for the title to be typed back before it sends that.
+
+Verified against the running stack: withdrawing a document dropped it from the live listing into the trash, left the stored object on disk, and took the graph from 7 nodes to 0; restoring it returned 202, the worker re-ingested it to `ready` with its chunk back, and the graph returned to 7 nodes and 21 edges. Purging refused on a live document, refused with no confirmation and with a mismatched one, then succeeded and removed the stored object.
 
 **Connecting.** The topbar's *API key* dialog stores a key in `sessionStorage`, so it dies with the tab and is never written into the image. `GET /api/v1/me` then tells the portal what that key may do, which is what drives navigation — Documents and Search are disabled without `knowledge:read`, History and Favorites without `chat:completions`. That filtering is convenience only: the backend authorizes every request regardless of what the UI chose to show. Settings lists **every** scope the platform defines, granted or not, because "you do not have this" is the answer somebody goes there for.
 

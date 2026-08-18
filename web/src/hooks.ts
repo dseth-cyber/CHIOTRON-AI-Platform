@@ -116,11 +116,11 @@ export function useAssistants(enabled: boolean): UseQueryResult<Assistant[], Err
   });
 }
 
-export function useConversations(enabled: boolean): UseQueryResult<ConversationList, Error> {
+export function useConversations(enabled: boolean, trash = false): UseQueryResult<ConversationList, Error> {
   const [credential] = useCredential();
   return useQuery<ConversationList, Error>({
-    queryKey: ['conversations', credential],
-    queryFn: ({ signal }) => fetchConversations(signal),
+    queryKey: ['conversations', credential, trash],
+    queryFn: ({ signal }) => fetchConversations(trash, signal),
     enabled: enabled && credential !== '',
     retry: retryUnlessClientError,
   });
@@ -136,11 +136,11 @@ export function useConversation(id: string | null): UseQueryResult<ConversationD
   });
 }
 
-export function useDocuments(enabled: boolean): UseQueryResult<DocumentList, Error> {
+export function useDocuments(enabled: boolean, trash = false): UseQueryResult<DocumentList, Error> {
   const [credential] = useCredential();
   return useQuery<DocumentList, Error>({
-    queryKey: ['documents', credential],
-    queryFn: ({ signal }) => fetchDocuments(signal),
+    queryKey: ['documents', credential, trash],
+    queryFn: ({ signal }) => fetchDocuments(trash, signal),
     enabled: enabled && credential !== '',
     // Ingestion is asynchronous, so a document uploaded a moment ago is still
     // moving from pending to ready while the page is open.

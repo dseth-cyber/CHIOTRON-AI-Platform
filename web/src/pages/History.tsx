@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { deleteConversation, type ConversationSummary } from '../api';
+import { deleteConversation, restoreConversation, type ConversationSummary } from '../api';
 import { DataTable, type Column } from '../components/DataTable';
 import { EmptyState } from '../components/EmptyState';
 import { FavoriteButton } from '../components/FavoriteButton';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { useConversations, useFavorites, useRefreshHistory, useScopes } from '../hooks';
 import { useTranslation } from '../LanguageContext';
 import { SCOPE_CHAT } from '../Connection';
@@ -18,7 +19,9 @@ import type { Navigate } from '../navigation';
 export function History({ onNavigate }: { onNavigate: Navigate }) {
   const { t, formatNumber, formatDate } = useTranslation();
   const { has } = useScopes();
-  const history = useConversations(has(SCOPE_CHAT));
+  const [showTrash, setShowTrash] = useState(false);
+  const [confirming, setConfirming] = useState<ConversationSummary | null>(null);
+  const history = useConversations(has(SCOPE_CHAT), showTrash);
   const favorites = useFavorites(has(SCOPE_CHAT));
   const refresh = useRefreshHistory();
   const [error, setError] = useState('');
@@ -31,13 +34,21 @@ export function History({ onNavigate }: { onNavigate: Navigate }) {
     (favorites.data ?? []).filter((mark) => mark.kind === 'conversation').map((mark) => mark.targetId),
   );
 
+  // Deleting is soft, so it needs a confirmation but not a typed code: it is
+  // undoable from the trash, which is the whole point of section 43.
   const remove = async (summary: ConversationSummary) => {
+    await deleteConversation(summary.id);
+    setConfirming(null);
+    refresh();
+  };
+
+  const restore = async (summary: ConversationSummary) => {
     setError('');
     try {
-      await deleteConversation(summary.id);
+      await restoreConversation(summary.id);
       refresh();
     } catch (failed) {
-      setError(failed instanceof Error ? failed.message : t('chat.error.deleteFailed'));
+      setError(failed instanceof Error ? failed.message : t('chat.error.restoreFailed'));
     }
   };
 
@@ -104,18 +115,23 @@ export function History({ onNavigate }: { onNavigate: Navigate }) {
       key: 'delete',
       header: t('history.column.actions'),
       align: 'end',
-      cell: (row) => (
-        <button className="danger-button" onClick={() => void remove(row)}>
-          {t('action.delete')}
-        </button>
-      ),
+      cell: (row) =>
+        showTrash ? (
+          <button className="secondary" onClick={() => void restore(row)}>
+            {t('action.restore')}
+          </button>
+        ) : (
+          <button className="danger-button" onClick={() => setConfirming(row)}>
+            {t('action.delete')}
+          </button>
+        ),
     },
   ];
 
   return (
     <>
       <section className="page-intro">
-        <p>{t('history.intro')}</p>
+        <p>{showTrash ? t('history.trashIntro') : t('history.intro')}</p>
         {history.data?.promptsPersisted === false && <span>{t('chat.promptsOff')}</span>}
       </section>
       <DataTable
@@ -124,14 +140,25 @@ export function History({ onNavigate }: { onNavigate: Navigate }) {
         rowKey={(row) => row.id}
         loading={history.isPending}
         error={error || (history.isError ? history.error.message : undefined)}
-        empty={t('chat.historyEmpty')}
-        pageSize={12}
+        empty={showTrash ? t('history.trashEmpty') : t('chat.historyEmpty')}
+        trash={{ showing: showTrash, onToggle: setShowTrash }}
         actions={
-          <button className="primary" onClick={() => onNavigate('chat')}>
+          <button className="primary" disabled={showTrash} onClick={() => onNavigate('chat')}>
             {t('action.newChat')}
           </button>
         }
       />
+
+      {confirming && (
+        <ConfirmDialog
+          title={t('history.confirmDelete.title')}
+          body={t('history.confirmDelete.body', { title: confirming.title || t('chat.untitled') })}
+          confirmLabel={t('action.moveToTrash')}
+          destructive
+          onCancel={() => setConfirming(null)}
+          onConfirm={() => remove(confirming)}
+        />
+      )}
     </>
   );
 }

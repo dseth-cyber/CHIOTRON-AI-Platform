@@ -16,10 +16,12 @@ import (
 type ConversationStore interface {
 	Create(ctx context.Context, owner conversation.Owner, assistantID string) (conversation.Conversation, error)
 	List(ctx context.Context, actorID string, limit int) ([]conversation.Conversation, error)
+	ListDeleted(ctx context.Context, actorID string, limit int) ([]conversation.Conversation, error)
 	Get(ctx context.Context, id, actorID string) (conversation.Conversation, error)
 	Messages(ctx context.Context, id, actorID string) ([]conversation.Message, error)
 	AppendTurn(ctx context.Context, id, actorID string, turn conversation.Turn) error
 	Delete(ctx context.Context, id, actorID string) error
+	Restore(ctx context.Context, id, actorID string) error
 	PersistsContent() bool
 }
 
@@ -46,7 +48,15 @@ func registerConversations(mux *http.ServeMux, d Deps) {
 			limit = parsed
 		}
 
-		records, err := d.Conversations.List(r.Context(), caller.KeyID, limit)
+		// The trash is the same listing under the opposite predicate, so both go
+		// through one owner check rather than two that could drift apart.
+		trash := r.URL.Query().Get("trash") == "true"
+		list := d.Conversations.List
+		if trash {
+			list = d.Conversations.ListDeleted
+		}
+
+		records, err := list(r.Context(), caller.KeyID, limit)
 		if err != nil {
 			d.Log.Error("list conversations", "error", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
@@ -57,6 +67,7 @@ func registerConversations(mux *http.ServeMux, d Deps) {
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"conversations": records,
+			"trash":         trash,
 			// Lets a client tell an empty transcript from a redacted one.
 			"promptsPersisted": d.Conversations.PersistsContent(),
 		})
@@ -98,6 +109,22 @@ func registerConversations(mux *http.ServeMux, d Deps) {
 		d.Audit.Record(r.Context(), audit.Event{
 			ActorID: caller.KeyID, APIKeyID: caller.KeyID, CompanyID: caller.CompanyID,
 			Action: "conversation.deleted", ResourceType: "conversation", ResourceID: id,
+		})
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	mux.HandleFunc("POST /api/v1/conversations/{id}/restore", d.guard(auth.ScopeChatCompletion, func(w http.ResponseWriter, r *http.Request) {
+		caller, _ := auth.IdentityFrom(r.Context())
+		id := r.PathValue("id")
+
+		if err := d.Conversations.Restore(r.Context(), id, caller.KeyID); err != nil {
+			d.writeConversationError(w, err, "restore conversation")
+			return
+		}
+
+		d.Audit.Record(r.Context(), audit.Event{
+			ActorID: caller.KeyID, APIKeyID: caller.KeyID, CompanyID: caller.CompanyID,
+			Action: "conversation.restored", ResourceType: "conversation", ResourceID: id,
 		})
 		w.WriteHeader(http.StatusNoContent)
 	}))

@@ -21,6 +21,7 @@ export type SelectOption = {
  */
 export function SearchableSelect({
   label,
+  labelHidden = false,
   value,
   options,
   onChange,
@@ -28,6 +29,8 @@ export function SearchableSelect({
   placeholder,
 }: {
   label: string;
+  /** Keeps the label for screen readers where the surrounding UI already names the control. */
+  labelHidden?: boolean;
   value: string;
   options: SelectOption[];
   onChange: (value: string) => void;
@@ -101,7 +104,7 @@ export function SearchableSelect({
 
   return (
     <div className="field searchable" ref={container}>
-      <span>{label}</span>
+      <span className={labelHidden ? 'visually-hidden' : undefined}>{label}</span>
       <button
         type="button"
         className="searchable-trigger"
