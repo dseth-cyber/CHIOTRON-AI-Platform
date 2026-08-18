@@ -4,10 +4,26 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import './styles.css';
 import { Modal } from './Modal';
 import { ChatWorkspace } from './Chat';
-import { ConnectDialog, ConnectionBadge, SCOPE_ASSISTANTS_READ, SCOPE_CHAT } from './Connection';
+import {
+  ConnectDialog,
+  ConnectionBadge,
+  SCOPE_ASSISTANTS_READ,
+  SCOPE_CHAT,
+  SCOPE_KNOWLEDGE_READ,
+} from './Connection';
 import { LanguageProvider, LanguageSwitcher, useTranslation } from './LanguageContext';
 import type { TranslationKey } from './i18n';
 import { useComputeHealth, useCredential, useModels, usePlatform, useScopes } from './hooks';
+import { installTheme } from './theme';
+import type { ChatTarget, Navigate, View } from './navigation';
+import { Home } from './pages/Home';
+import { History } from './pages/History';
+import { Assistants } from './pages/Assistants';
+import { Documents } from './pages/Documents';
+import { Search } from './pages/Search';
+import { Favorites } from './pages/Favorites';
+import { Settings } from './pages/Settings';
+import { SharedChats } from './pages/SharedChats';
 
 type PhaseStatus = 'complete' | 'active' | 'planned';
 /**
@@ -23,7 +39,6 @@ type Phase = {
   status: PhaseStatus; sprints: string[];
   blocker?: Blocker;
 };
-type View = 'portal' | 'roadmap' | 'rules' | 'architecture' | 'chat';
 type Overview = { total: number; done: number; progress: number; active: number };
 
 // Phase titles, milestone names and governance text mirror ARCHITECTURE-v1 and
@@ -32,7 +47,9 @@ type Overview = { total: number; done: number; progress: number; active: number 
 const initialPhases: Phase[] = [
   { id: 1, title: 'Foundation', detail: 'Contracts, service boundaries, migrations and platform configuration', progress: 80, done: 4, total: 5, status: 'active', sprints: ['Architecture v1 and service boundaries recorded', 'Development compose and AI database foundation available', 'Service-owned migrations and configuration', 'OpenTelemetry baseline and CI checks', 'Identity/JWT contract integration'], blocker: 'identity' },
   { id: 2, title: 'AI Gateway', detail: 'JWT/API key enforcement, quota, streaming, usage and audit outbox', progress: 80, done: 4, total: 5, status: 'active', sprints: ['Health and platform discovery endpoint available', 'API keys, scopes and rotation', 'Usage metadata and audit outbox', 'Rate limits, quota and SSE streaming', 'JWT validation and active-company guard'], blocker: 'identity' },
-  { id: 3, title: 'User Portal', detail: 'Assistant-first workspace, history, permissions and multilingual UI', progress: 100, done: 6, total: 6, status: 'complete', sprints: ['Application shell and Developer Portal delivered', 'Roadmap tracking UI delivered', 'Gateway-connected portal and chat workspace', 'Permission-aware navigation', 'Assistant catalogue and conversation history', 'Thai, English, Chinese, Burmese and Japanese i18n'] },
+  // Section 10 lists nine pages; eight are built. Shared Chats is the ninth and
+  // cannot be, because a conversation belongs to a key rather than a person.
+  { id: 3, title: 'User Portal', detail: 'Assistant-first workspace, history, permissions and multilingual UI', progress: 88, done: 7, total: 8, status: 'active', sprints: ['Application shell and Developer Portal delivered', 'Roadmap tracking UI delivered', 'Gateway-connected portal and chat workspace', 'Permission-aware grouped navigation', 'Assistant catalogue and conversation history', 'Thai, English, Chinese, Burmese and Japanese i18n', 'Home, Documents, Search, Favorites and Settings pages', 'Shared chats across users'], blocker: 'identity' },
   { id: 4, title: 'Local LLM', detail: 'Provider routing, compute health and isolated local inference', progress: 100, done: 5, total: 5, status: 'complete', sprints: ['Ollama Compute Plane running', 'NVIDIA GPU passthrough verified', 'Qwen smoke-test model loaded', 'Provider-neutral Ollama adapter', 'Compute registry and model router'] },
   { id: 5, title: 'Knowledge Platform', detail: 'Document ACL, ingestion, embedding pipeline and hybrid search', progress: 100, done: 6, total: 6, status: 'complete', sprints: ['StorageProvider and source configuration', 'Document upload contract', 'ACL metadata and classification policy', 'Parser, chunking and provenance', 'Embedding worker and pgvector storage', 'Permission-filtered hybrid retrieval'] },
   { id: 6, title: 'Agentic RAG', detail: 'Planner, controlled tools, citations and retrieval policies', progress: 80, done: 4, total: 5, status: 'active', sprints: ['Intent and planner policy', 'Controlled tool registry', 'Agent authorization and rate limits', 'Multi-step retrieval and conflict handling', 'Citation and evaluation suite'], blocker: 'evalset' },
@@ -50,18 +67,55 @@ const MODULE_TAGS: Record<(typeof MODULE_KEYS)[number], string> = {
   api: 'API', module: 'MOD', event: 'EVT', map: 'MAP', flags: 'FLG', prompts: 'PRM',
 };
 
+/**
+ * The navigation, grouped the way section 10 lists the portal's pages.
+ *
+ * `scopes` is what the connected key must hold for the item to be usable. This
+ * is convenience only: the backend authorizes every request regardless of what
+ * the portal chose to show (ARCHITECTURE-v1 section 5).
+ */
+type NavItem = { view: View; mark: string; label: TranslationKey; scopes?: string[]; reason?: TranslationKey };
+type NavGroup = { label: TranslationKey; items: NavItem[] };
+
+const NAV_GROUPS: NavGroup[] = [
+  {
+    label: 'nav.group.workspace',
+    items: [
+      { view: 'home', mark: 'HM', label: 'nav.home' },
+      { view: 'chat', mark: 'NC', label: 'nav.newChat', scopes: [SCOPE_CHAT, SCOPE_ASSISTANTS_READ], reason: 'nav.chatDisabled' },
+      { view: 'history', mark: 'HI', label: 'nav.history', scopes: [SCOPE_CHAT], reason: 'nav.historyDisabled' },
+      { view: 'assistants', mark: 'AS', label: 'nav.assistants', scopes: [SCOPE_ASSISTANTS_READ], reason: 'nav.assistantsDisabled' },
+      { view: 'favorites', mark: 'FV', label: 'nav.favorites', scopes: [SCOPE_CHAT], reason: 'nav.historyDisabled' },
+      { view: 'shared', mark: 'SH', label: 'nav.shared' },
+    ],
+  },
+  {
+    label: 'nav.group.knowledge',
+    items: [
+      { view: 'documents', mark: 'DC', label: 'nav.documents', scopes: [SCOPE_KNOWLEDGE_READ], reason: 'nav.knowledgeDisabled' },
+      { view: 'search', mark: 'SR', label: 'nav.search', scopes: [SCOPE_KNOWLEDGE_READ], reason: 'nav.knowledgeDisabled' },
+    ],
+  },
+  {
+    label: 'nav.group.platform',
+    items: [
+      { view: 'portal', mark: 'DP', label: 'nav.developerPortal' },
+      { view: 'roadmap', mark: 'RM', label: 'nav.roadmap' },
+      { view: 'settings', mark: 'ST', label: 'nav.settings' },
+    ],
+  },
+];
+
 function App() {
   const { t } = useTranslation();
-  const [view, setView] = useState<View>('portal');
+  const [view, setView] = useState<View>('home');
+  const [chatTarget, setChatTarget] = useState<ChatTarget | null>(null);
   const [phases, setPhases] = useState(initialPhases);
   const [expanded, setExpanded] = useState<number | null>(1);
   const [showAdd, setShowAdd] = useState(false);
   const [showConnect, setShowConnect] = useState(false);
   const [showUpdate, setShowUpdate] = useState<number | null>(null);
   const { has } = useScopes();
-  // The workspace picks an assistant before it can send anything, so it needs
-  // both scopes to be usable at all.
-  const canChat = has(SCOPE_CHAT) && has(SCOPE_ASSISTANTS_READ);
 
   const overview = useMemo<Overview>(() => {
     const total = phases.reduce((sum, phase) => sum + phase.total, 0);
@@ -72,26 +126,45 @@ function App() {
   const updateProgress = (id: number, progress: number) => setPhases((current) => current.map((phase) => phase.id !== id ? phase : { ...phase, progress, done: Math.round((progress / 100) * phase.total), status: progress === 100 ? 'complete' : progress > 0 ? 'active' : 'planned' }));
   const addPhase = () => { const id = Math.max(...phases.map((phase) => phase.id)) + 1; setPhases((current) => [...current, { id, title: 'New delivery phase', detail: 'Define the objective and delivery milestones.', progress: 0, done: 0, total: 3, status: 'planned', sprints: ['Define outcome', 'Implement', 'Validate'] }]); setShowAdd(false); setView('roadmap'); };
 
-  const portalActive = view === 'portal' || view === 'rules' || view === 'architecture';
+  // Navigating to chat with a target remounts the workspace, so a conversation
+  // opened from history replaces whatever was on screen rather than merging with it.
+  const navigate: Navigate = (next, target) => {
+    if (next === 'chat') setChatTarget(target ?? {});
+    setView(next);
+  };
+
+  const allowed = (item: NavItem) => (item.scopes ?? []).every((scope) => has(scope));
+  // The governance detail pages are opened from the Developer Portal, so that
+  // nav entry has to stay lit while one of them is on screen.
+  const isActive = (item: NavItem) =>
+    item.view === view || (item.view === 'portal' && (view === 'rules' || view === 'architecture'));
 
   return (
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand"><span className="brand-mark">C</span><span>CHIOTRON</span></div>
-        <p className="workspace-label">{t('nav.platform')}</p>
-        <nav className="side-nav" aria-label={t('nav.platform')}>
-          <button className={portalActive ? 'nav-item active' : 'nav-item'} onClick={() => setView('portal')}><span>DP</span>{t('nav.developerPortal')}</button>
-          <button className={view === 'roadmap' ? 'nav-item active' : 'nav-item'} onClick={() => setView('roadmap')}><span>RM</span>{t('nav.roadmap')}</button>
-          {/* Navigation follows the connected key's scopes. This is convenience
-              only: the backend authorizes every request regardless. */}
-          <button
-            className={view === 'chat' ? 'nav-item active' : canChat ? 'nav-item' : 'nav-item muted'}
-            onClick={() => canChat && setView('chat')}
-            disabled={!canChat}
-            title={canChat ? undefined : t('nav.chatDisabled')}
-          ><span>CH</span>{t('nav.chat')}</button>
-          <button className="nav-item muted" disabled title={t('nav.notBuilt')}><span>KN</span>{t('nav.knowledge')}</button>
-        </nav>
+        {NAV_GROUPS.map((group) => (
+          <div className="nav-group" key={group.label}>
+            <p className="workspace-label">{t(group.label)}</p>
+            <nav className="side-nav" aria-label={t(group.label)}>
+              {group.items.map((item) => {
+                const usable = allowed(item);
+                return (
+                  <button
+                    key={item.view}
+                    className={isActive(item) ? 'nav-item active' : usable ? 'nav-item' : 'nav-item muted'}
+                    onClick={() => usable && navigate(item.view)}
+                    disabled={!usable}
+                    title={usable ? undefined : item.reason ? t(item.reason) : undefined}
+                  >
+                    <span>{item.mark}</span>
+                    {t(item.label)}
+                  </button>
+                );
+              })}
+            </nav>
+          </div>
+        ))}
         <div className="sidebar-foot">
           <ConnectionBadge onConnect={() => setShowConnect(true)} />
         </div>
@@ -112,9 +185,24 @@ function App() {
           </div>
         </header>
 
+        {view === 'home' && <Home onNavigate={navigate} onConnect={() => setShowConnect(true)} />}
+        {view === 'chat' && (
+          <ChatWorkspace
+            key={chatTarget?.conversationId ?? chatTarget?.assistant ?? 'new'}
+            target={chatTarget}
+            onConnect={() => setShowConnect(true)}
+            onNavigate={navigate}
+          />
+        )}
+        {view === 'history' && <History onNavigate={navigate} />}
+        {view === 'assistants' && <Assistants onNavigate={navigate} />}
+        {view === 'documents' && <Documents />}
+        {view === 'search' && <Search />}
+        {view === 'favorites' && <Favorites onNavigate={navigate} />}
+        {view === 'shared' && <SharedChats onNavigate={navigate} />}
+        {view === 'settings' && <Settings onConnect={() => setShowConnect(true)} />}
         {view === 'portal' && <DeveloperPortal overview={overview} onRoadmap={() => setView('roadmap')} onOpen={setView} onConnect={() => setShowConnect(true)} />}
         {view === 'roadmap' && <Roadmap phases={phases} overview={overview} expanded={expanded} setExpanded={setExpanded} onUpdate={setShowUpdate} onAdd={() => setShowAdd(true)} />}
-        {view === 'chat' && <ChatWorkspace onConnect={() => setShowConnect(true)} />}
         {(view === 'rules' || view === 'architecture') && <DetailPage kind={view} onBack={() => setView('portal')} />}
       </main>
 
@@ -398,6 +486,10 @@ function ProgressModal({ phase, onClose, onSave }: { phase: Phase; onClose: () =
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 15_000, refetchOnWindowFocus: false } },
 });
+
+// The theme is applied as CSS custom properties before the first render, so no
+// frame is painted with the stylesheet's fallback colours.
+installTheme();
 
 createRoot(document.getElementById('root')!).render(
   <LanguageProvider>

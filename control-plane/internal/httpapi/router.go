@@ -48,6 +48,7 @@ type Deps struct {
 	Conversations ConversationStore
 	Knowledge     Knowledge
 	Agent         Agent
+	Favorites     FavoriteStore
 	// Instruments records platform metrics. Metrics above is the scrape handler
 	// that exposes them. Both are optional: losing a metric must not stop the
 	// platform serving requests.
@@ -151,6 +152,7 @@ func NewRouter(d Deps) http.Handler {
 	registerChat(mux, d)
 	registerKnowledge(mux, d)
 	registerAgent(mux, d)
+	registerFavorites(mux, d)
 	registerAdmin(mux, d)
 
 	// Ordering matters, outermost first:

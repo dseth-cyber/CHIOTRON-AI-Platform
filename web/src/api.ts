@@ -15,6 +15,9 @@ export type Identity = {
   name: string;
   scopes: string[];
   companyId?: string;
+  department?: string;
+  /** The ABAC triple's third leg: how far up the classification ladder this key reads. */
+  maxClassification: string;
   rateLimitPerMinute: number;
 };
 
@@ -98,6 +101,80 @@ export type ConversationDetail = {
   promptsPersisted: boolean;
 };
 
+export type Document = {
+  id: string;
+  sourceSlug: string;
+  title: string;
+  mimeType: string;
+  byteSize: number;
+  checksum: string;
+  classification: string;
+  companyId?: string;
+  department?: string;
+  ownerId: string;
+  /** pending, processing, ready or failed; the worker moves it along. */
+  status: string;
+  error?: string;
+  chunkCount: number;
+  ingestedAt?: string;
+  createdAt: string;
+};
+
+export type DocumentList = {
+  documents: Document[];
+  /** Counts by status, so a page can say how much of the corpus is searchable. */
+  status: Record<string, number>;
+  readableClassifications: string[];
+};
+
+export type SearchHit = {
+  chunkId: number;
+  documentId: string;
+  documentTitle: string;
+  ordinal: number;
+  content: string;
+  classification: string;
+  score: number;
+  vectorScore?: number;
+  keywordScore?: number;
+};
+
+export type SearchResult = { hits: SearchHit[]; readableClassifications: string[] };
+
+export type GraphNode = {
+  id: string;
+  kind: string;
+  name: string;
+  normalisedName: string;
+  classification: string;
+  mentionCount: number;
+};
+
+export type GraphEdge = {
+  sourceId: string;
+  targetId: string;
+  relation: string;
+  weight: number;
+  classification: string;
+};
+
+export type Subgraph = {
+  seeds?: GraphNode[];
+  nodes?: GraphNode[];
+  edges?: GraphEdge[];
+  truncated?: boolean;
+};
+
+export type FavoriteKind = 'assistant' | 'conversation' | 'document';
+
+export type Favorite = {
+  kind: FavoriteKind;
+  targetId: string;
+  label: string;
+  detail?: string;
+  createdAt: string;
+};
+
 export type Completion = {
   logicalModel: string;
   provider: string;
@@ -168,12 +245,58 @@ export const fetchConversations = (signal?: AbortSignal) =>
 export const fetchConversation = (id: string, signal?: AbortSignal) =>
   get<ConversationDetail>(`/api/v1/conversations/${encodeURIComponent(id)}`, signal);
 
-export async function deleteConversation(id: string): Promise<void> {
-  const response = await fetch(`${BASE}/api/v1/conversations/${encodeURIComponent(id)}`, {
-    method: 'DELETE',
-    headers: headers(),
+export const fetchDocuments = (signal?: AbortSignal) =>
+  get<DocumentList>('/api/v1/documents', signal);
+export const fetchFavorites = (signal?: AbortSignal) =>
+  get<{ favorites: Favorite[] }>('/api/v1/favorites', signal);
+export const fetchGraph = (term: string, signal?: AbortSignal) =>
+  get<{ subgraph: Subgraph }>(`/api/v1/graph/neighbours?term=${encodeURIComponent(term)}`, signal);
+
+async function send<T>(method: string, path: string, body?: unknown): Promise<T | undefined> {
+  const response = await fetch(`${BASE}${path}`, {
+    method,
+    headers: body === undefined ? headers() : { ...headers(), 'Content-Type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
   });
   if (!response.ok) throw await failure(response);
+  // 204 is the normal answer for favourites and deletions; parsing it would throw.
+  if (response.status === 204) return undefined;
+  return (await response.json()) as T;
+}
+
+export async function deleteConversation(id: string): Promise<void> {
+  await send('DELETE', `/api/v1/conversations/${encodeURIComponent(id)}`);
+}
+
+export type UploadRequest = {
+  title: string;
+  content: string;
+  classification: string;
+  sourceSlug?: string;
+  mimeType?: string;
+};
+
+/**
+ * Uploads a document. The response is 202: the text is stored and queued, and
+ * the embedding worker moves it to ready afterwards, so a client must not treat
+ * a successful upload as a searchable document.
+ */
+export const uploadDocument = (request: UploadRequest) =>
+  send<{ document: Document }>('POST', '/api/v1/documents', request);
+
+export async function deleteDocument(id: string): Promise<void> {
+  await send('DELETE', `/api/v1/documents/${encodeURIComponent(id)}`);
+}
+
+export const searchKnowledge = (query: string, limit?: number) =>
+  send<SearchResult>('POST', '/api/v1/knowledge/search', { query, ...(limit ? { limit } : {}) });
+
+export async function setFavorite(
+  kind: FavoriteKind,
+  targetId: string,
+  marked: boolean,
+): Promise<void> {
+  await send(marked ? 'PUT' : 'DELETE', '/api/v1/favorites', { kind, targetId });
 }
 
 export type ChatMessage = { role: 'system' | 'user' | 'assistant'; content: string };

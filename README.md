@@ -44,6 +44,8 @@ Ollama and model credentials are deliberately never exposed to browsers.
 | `DELETE /api/v1/documents/{id}` | Withdraw a document and its chunks. Needs `knowledge:write`. |
 | `POST /api/v1/knowledge/search` | Permission-filtered hybrid retrieval. Needs `knowledge:read`. |
 | `GET /api/v1/graph/neighbours` | Relationship traversal from a term. Needs `knowledge:read`. |
+| `GET /api/v1/favorites` | The caller's own marks, resolved against what it may still read. Needs `chat:completions`. |
+| `PUT/DELETE /api/v1/favorites` | Mark or unmark an assistant, conversation or document. Needs `chat:completions`. |
 | `GET /api/v1/tools` | Tools the caller may actually call. Needs `tools:read`. |
 | `POST /api/v1/agent/answer` | Grounded answer with citations and a run trace. Needs `agent:run`. |
 | `GET /api/v1/agent/runs/{id}` | The trace for one run. Needs `agent:run`. |
@@ -272,13 +274,31 @@ powershell -File scripts/check.ps1
 
 ## Portal
 
-The portal is the only browser client and it talks to the Control Plane only (ARCHITECTURE-v1 section 2). It reads `GET /api/v1/platform` without a credential, so the shell renders before anyone connects; models, compute status and the chat workspace need an API key.
+The portal is the only browser client and it talks to the Control Plane only (ARCHITECTURE-v1 section 2). It reads `GET /api/v1/platform` without a credential, so the shell renders before anyone connects; models, compute status and everything in the workspace need an API key.
 
-**Connecting.** The topbar's *API key* dialog stores a key in `sessionStorage`, so it dies with the tab and is never written into the image. `GET /api/v1/me` then tells the portal what that key may do, which is what drives navigation — the Chat item is disabled without `chat:completions`. That filtering is convenience only: the backend authorizes every request regardless of what the UI chose to show.
+**Pages.** Navigation is grouped the way section 10 lists them:
+
+| Group | Pages |
+|---|---|
+| Workspace | Home, New chat, History, Assistants, Favorites, Shared chats |
+| Knowledge | Documents, Search |
+| Platform | Developer Portal, Roadmap, Settings |
+
+Eight of the nine pages section 10 names are built. **Shared chats is not, and the page in that slot says so** rather than pretending: a conversation belongs to an API key, not to a person, so two people sharing a key already share a history and one person holding two keys shares none. Sharing needs an owner that survives a key rotation, which is the Identity Service contract section 13 item 2 is waiting on.
+
+**Shared components.** `SearchableSelect`, `DataTable` and `EmptyState` under `web/src/components/` are used by every page, so sorting, column selection, paging, loading and empty states behave identically wherever they appear. `web/src/theme.ts` holds the one theme: it is installed as CSS custom properties before the first render, and a component that hard-codes a colour is how a design drifts one page at a time.
+
+**Connecting.** The topbar's *API key* dialog stores a key in `sessionStorage`, so it dies with the tab and is never written into the image. `GET /api/v1/me` then tells the portal what that key may do, which is what drives navigation — Documents and Search are disabled without `knowledge:read`, History and Favorites without `chat:completions`. That filtering is convenience only: the backend authorizes every request regardless of what the UI chose to show. Settings lists **every** scope the platform defines, granted or not, because "you do not have this" is the answer somebody goes there for.
 
 This is a development bridge. Once the Identity Service issues JWTs to the portal, the browser stops holding a platform credential; until then, connect the narrowest key that does the job and keep `admin:keys` out of the browser.
 
 **Chat.** The workspace streams over SSE, picks its model list from `/api/v1/models` (defaulting to whatever the gateway calls default, never a hard-coded model name), and shows real token counts and latency per turn. `EventSource` cannot send an `Authorization` header, so the stream is read with `fetch` and reassembled across network chunks.
+
+**Documents.** Upload asks only for a title, a classification and the text: company and department come from the credential, so a caller cannot file a document outside its own scope, and the classification select offers only levels at or below its clearance. The list polls while anything is `pending` or `processing`, because ingestion is asynchronous and a successful upload is not yet a searchable document.
+
+**Search.** Two modes over the same corpus and the same ACL predicates: passages (pgvector cosine fused with PostgreSQL full-text) and relationships (the graph, ACL filtered at every hop). Both print the classifications the answer was drawn from — an empty result with no clearance line is indistinguishable from an empty corpus.
+
+**Favorites.** `GET/PUT/DELETE /api/v1/favorites` marks assistants, conversations and documents, gated by `chat:completions` for the same reason history is: a caller's own marks are part of using the platform, not a separate capability. The server resolves each mark against its record using the predicates the owning endpoint uses and drops the ones it can no longer read — verified by raising a favourited document to `restricted` against a `confidential` key, watching the mark disappear from `GET /api/v1/favorites`, restoring the classification and watching it return, with the row never deleted.
 
 **Live figures.** The Developer Portal stat cards read environment, version, capabilities, model availability and compute status from the API. Only the roadmap remains local state — it is a planning artefact, not platform data.
 
@@ -294,8 +314,6 @@ src/i18n.ts(636,7): error TS2741: Property '"chat.error.catalogue.title"' is mis
 Two bodies of text are deliberately **not** translated and are labelled as such in the UI: the twelve governance rules with the ten stack entries, and the roadmap's phase and milestone names. They mirror `docs/ARCHITECTURE-v1.md` and should be translated together with it, by a reviewer who can check the terminology. The Chinese, Japanese and Burmese UI strings are a first pass and want a native review before production.
 
 Type checking is part of the build: `npm run build` runs `tsc --noEmit` first, so a type error fails the image. Dependencies are pinned by `package-lock.json` and installed with `npm ci`.
-
-The next development phase should add identity/JWT middleware, then assistant and conversation APIs on top of the compute registry.
 
 ## After changing source
 

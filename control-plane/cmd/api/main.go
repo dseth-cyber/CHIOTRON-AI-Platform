@@ -32,6 +32,7 @@ import (
 	"github.com/chiotron/ai-control-plane/internal/auth"
 	"github.com/chiotron/ai-control-plane/internal/config"
 	"github.com/chiotron/ai-control-plane/internal/conversation"
+	"github.com/chiotron/ai-control-plane/internal/favorite"
 	"github.com/chiotron/ai-control-plane/internal/graph"
 	"github.com/chiotron/ai-control-plane/internal/httpapi"
 	"github.com/chiotron/ai-control-plane/internal/knowledge"
@@ -138,6 +139,7 @@ func run() error {
 		Conversations: conversation.NewStore(pool, cfg.PersistPrompts),
 		Knowledge:     knowledgeDeps,
 		Agent:         agentDeps,
+		Favorites:     favorite.NewStore(pool),
 		Instruments:   tel.Metrics,
 		Checkers: []httpapi.Checker{
 			httpapi.CheckerFunc{DependencyName: "postgres", Probe: pool.Ping},

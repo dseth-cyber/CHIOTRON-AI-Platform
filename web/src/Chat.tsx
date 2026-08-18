@@ -1,13 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import {
-  ApiError,
-  deleteConversation,
-  streamChat,
-  type ConversationSummary,
-  type TokenUsage,
-} from './api';
-import { useAssistants, useConversation, useConversations, useRefreshHistory } from './hooks';
+import { ApiError, streamChat, type TokenUsage } from './api';
+import { SearchableSelect } from './components/SearchableSelect';
+import { FavoriteButton } from './components/FavoriteButton';
+import { EmptyState } from './components/EmptyState';
+import { useAssistants, useConversation, useFavorites, useRefreshHistory, useScopes } from './hooks';
 import { useTranslation } from './LanguageContext';
+import { SCOPE_CHAT } from './Connection';
+import type { ChatTarget, Navigate } from './navigation';
 
 type Turn = {
   role: 'user' | 'assistant';
@@ -18,14 +17,30 @@ type Turn = {
   latencyMs?: number;
 };
 
-export function ChatWorkspace({ onConnect }: { onConnect: () => void }) {
+/**
+ * The chat workspace.
+ *
+ * History lives on its own page (ARCHITECTURE-v1 section 10), so this is only
+ * the transcript and the composer. It opens either on a stored conversation or
+ * on an assistant, whichever the caller navigated with.
+ */
+export function ChatWorkspace({
+  target,
+  onConnect,
+  onNavigate,
+}: {
+  target: ChatTarget | null;
+  onConnect: () => void;
+  onNavigate: Navigate;
+}) {
   const { t, formatNumber } = useTranslation();
+  const { has } = useScopes();
   const assistants = useAssistants(true);
-  const history = useConversations(true);
+  const favorites = useFavorites(has(SCOPE_CHAT));
   const refreshHistory = useRefreshHistory();
 
-  const [assistant, setAssistant] = useState('');
-  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [assistant, setAssistant] = useState(target?.assistant ?? '');
+  const [conversationId, setConversationId] = useState<string | null>(target?.conversationId ?? null);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [prompt, setPrompt] = useState('');
   const [streaming, setStreaming] = useState(false);
@@ -48,6 +63,7 @@ export function ChatWorkspace({ onConnect }: { onConnect: () => void }) {
     if (conversationId === null || detail.data === undefined) return;
     if (hydratedFor.current === conversationId) return;
     hydratedFor.current = conversationId;
+    if (detail.data.conversation.assistantSlug) setAssistant(detail.data.conversation.assistantSlug);
     setTurns(
       detail.data.messages.map((message) => ({
         role: message.role,
@@ -76,23 +92,6 @@ export function ChatWorkspace({ onConnect }: { onConnect: () => void }) {
     setConversationId(null);
     setTurns([]);
     setError('');
-  };
-
-  const open = (summary: ConversationSummary) => {
-    abort.current?.abort();
-    setError('');
-    if (summary.assistantSlug) setAssistant(summary.assistantSlug);
-    setConversationId(summary.id);
-  };
-
-  const remove = async (summary: ConversationSummary) => {
-    try {
-      await deleteConversation(summary.id);
-      if (conversationId === summary.id) startNew();
-      refreshHistory();
-    } catch (failed) {
-      setError(failed instanceof Error ? failed.message : t('chat.error.deleteFailed'));
-    }
   };
 
   const send = async () => {
@@ -169,152 +168,128 @@ export function ChatWorkspace({ onConnect }: { onConnect: () => void }) {
   if (assistants.isError) {
     const rejected = assistants.error instanceof ApiError && assistants.error.status === 403;
     return (
-      <section className="chat-empty">
-        <h2>{rejected ? t('chat.error.scope.title') : t('chat.error.catalogue.title')}</h2>
-        <p>{rejected ? t('chat.error.scope.body') : assistants.error.message}</p>
-        <button className="primary" onClick={onConnect}>
-          {t('action.changeKey')}
-        </button>
-      </section>
+      <EmptyState
+        title={rejected ? t('chat.error.scope.title') : t('chat.error.catalogue.title')}
+        body={rejected ? t('chat.error.scope.body') : assistants.error.message}
+        action={
+          <button className="primary" onClick={onConnect}>
+            {t('action.changeKey')}
+          </button>
+        }
+      />
     );
   }
 
   const selected = assistants.data?.find((entry) => entry.slug === assistant);
-  const conversations = history.data?.conversations ?? [];
+  const marked = new Set(
+    (favorites.data ?? []).filter((mark) => mark.kind === 'conversation').map((mark) => mark.targetId),
+  );
+  const title = detail.data?.conversation.title ?? '';
 
   return (
-    <section className="workspace">
-      <aside className="history">
-        <div className="history-head">
-          <span className="panel-label">{t('chat.history')}</span>
-          <button className="text-button" onClick={startNew}>
-            {t('action.newChat')} <span>+</span>
+    <section className="chat-page">
+      <header className="chat-bar">
+        <SearchableSelect
+          label={t('chat.assistant')}
+          value={assistant}
+          // An existing conversation is bound to the assistant it started with,
+          // so switching is only possible on a new one.
+          disabled={conversationId !== null || streaming}
+          options={(assistants.data ?? []).map((entry) => ({
+            value: entry.slug,
+            label: entry.name,
+            detail: entry.logicalModel,
+            disabled: !entry.enabled,
+          }))}
+          onChange={setAssistant}
+        />
+        <span className="chat-meta">
+          {selected
+            ? t('chat.assistantMeta', {
+                description: selected.description,
+                model: selected.logicalModel,
+              })
+            : ''}
+        </span>
+        <div className="chat-tools">
+          {conversationId !== null && (
+            <FavoriteButton
+              kind="conversation"
+              targetId={conversationId}
+              marked={marked.has(conversationId)}
+              label={title || t('chat.untitled')}
+            />
+          )}
+          <button className="text-button" onClick={() => onNavigate('history')}>
+            {t('chat.history')} <span>→</span>
+          </button>
+          <button className="secondary" onClick={startNew} disabled={conversationId === null && turns.length === 0}>
+            {t('action.newChat')}
           </button>
         </div>
-        {history.isError && <p className="error-note">{history.error.message}</p>}
-        {conversations.length === 0 && !history.isPending && (
-          <p className="history-hint">{t('chat.historyEmpty')}</p>
-        )}
-        <ul className="history-list">
-          {conversations.map((summary) => {
-            const title = summary.title || t('chat.untitled');
-            return (
-              <li key={summary.id} className={summary.id === conversationId ? 'current' : ''}>
-                <button className="history-item" onClick={() => open(summary)}>
-                  <b>{title}</b>
-                  <small>
-                    {t('chat.summary', {
-                      assistant: summary.assistantName ?? t('chat.unknownAssistant'),
-                      messages: formatNumber(summary.messageCount),
-                      tokens: formatNumber(summary.totalTokens),
-                    })}
-                  </small>
-                </button>
-                <button
-                  className="history-delete"
-                  aria-label={t('chat.delete', { title })}
-                  onClick={() => void remove(summary)}
-                >
-                  ×
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-        {history.data?.promptsPersisted === false && (
-          <p className="history-hint">{t('chat.promptsOff')}</p>
-        )}
-      </aside>
+      </header>
 
-      <div className="chat">
-        <header className="chat-bar">
-          <label className="field inline">
-            <span>{t('chat.assistant')}</span>
-            <select
-              value={assistant}
-              // An existing conversation is bound to the assistant it started
-              // with, so switching is only possible on a new one.
-              disabled={conversationId !== null || streaming}
-              onChange={(event) => setAssistant(event.target.value)}
-            >
-              {(assistants.data ?? []).map((entry) => (
-                <option key={entry.slug} value={entry.slug}>
-                  {entry.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <span className="chat-meta">
-            {selected
-              ? t('chat.assistantMeta', {
-                  description: selected.description,
-                  model: selected.logicalModel,
-                })
-              : ''}
-          </span>
-        </header>
+      {conversationId !== null && title !== '' && <p className="chat-title">{title}</p>}
 
-        <div className="transcript" ref={transcript}>
-          {turns.length === 0 && <p className="transcript-hint">{t('chat.transcriptHint')}</p>}
-          {turns.map((turn, index) => (
-            <article className={`turn ${turn.role}`} key={index}>
-              <span className="turn-role">
-                {turn.role === 'user' ? t('chat.you') : t('chat.assistantRole')}
-              </span>
-              <p>
-                {turn.redacted ? <i className="redacted">{t('chat.notStored')}</i> : turn.content}
-                {streaming && index === turns.length - 1 && <i className="caret" />}
-              </p>
-              {turn.usage && (
-                <small>
-                  {t('chat.usage', {
-                    total: formatNumber(turn.usage.totalTokens),
-                    input: formatNumber(turn.usage.promptTokens),
-                    output: formatNumber(turn.usage.completionTokens),
-                  })}
-                  {turn.latencyMs ? ` · ${formatNumber(turn.latencyMs)} ms` : ''}
-                  {turn.finishReason ? ` · ${turn.finishReason}` : ''}
-                </small>
-              )}
-              {!turn.usage && turn.finishReason === 'cancelled' && (
-                <small>{t('chat.cancelled')}</small>
-              )}
-            </article>
-          ))}
-        </div>
+      <div className="transcript" ref={transcript}>
+        {turns.length === 0 && <p className="transcript-hint">{t('chat.transcriptHint')}</p>}
+        {turns.map((turn, index) => (
+          <article className={`turn ${turn.role}`} key={index}>
+            <span className="turn-role">
+              {turn.role === 'user' ? t('chat.you') : t('chat.assistantRole')}
+            </span>
+            <p>
+              {turn.redacted ? <i className="redacted">{t('chat.notStored')}</i> : turn.content}
+              {streaming && index === turns.length - 1 && <i className="caret" />}
+            </p>
+            {turn.usage && (
+              <small>
+                {t('chat.usage', {
+                  total: formatNumber(turn.usage.totalTokens),
+                  input: formatNumber(turn.usage.promptTokens),
+                  output: formatNumber(turn.usage.completionTokens),
+                })}
+                {turn.latencyMs ? ` · ${formatNumber(turn.latencyMs)} ms` : ''}
+                {turn.finishReason ? ` · ${turn.finishReason}` : ''}
+              </small>
+            )}
+            {!turn.usage && turn.finishReason === 'cancelled' && <small>{t('chat.cancelled')}</small>}
+          </article>
+        ))}
+      </div>
 
-        {error !== '' && <p className="error-note">{error}</p>}
+      {error !== '' && <p className="error-note">{error}</p>}
+      {detail.data?.promptsPersisted === false && <p className="source-note">{t('chat.promptsOff')}</p>}
 
-        <div className="composer">
-          <textarea
-            value={prompt}
-            rows={3}
-            placeholder={
-              selected ? t('chat.placeholderNamed', { name: selected.name }) : t('chat.placeholder')
+      <div className="composer">
+        <textarea
+          value={prompt}
+          rows={3}
+          placeholder={
+            selected ? t('chat.placeholderNamed', { name: selected.name }) : t('chat.placeholder')
+          }
+          onChange={(event) => setPrompt(event.target.value)}
+          onKeyDown={(event) => {
+            // Enter sends, Shift+Enter starts a new line.
+            if (event.key === 'Enter' && !event.shiftKey) {
+              event.preventDefault();
+              void send();
             }
-            onChange={(event) => setPrompt(event.target.value)}
-            onKeyDown={(event) => {
-              // Enter sends, Shift+Enter starts a new line.
-              if (event.key === 'Enter' && !event.shiftKey) {
-                event.preventDefault();
-                void send();
-              }
-            }}
-          />
-          {streaming ? (
-            <button className="secondary" onClick={() => abort.current?.abort()}>
-              {t('action.stop')}
-            </button>
-          ) : (
-            <button
-              className="primary"
-              onClick={() => void send()}
-              disabled={prompt.trim() === '' || assistant === ''}
-            >
-              {t('action.send')}
-            </button>
-          )}
-        </div>
+          }}
+        />
+        {streaming ? (
+          <button className="secondary" onClick={() => abort.current?.abort()}>
+            {t('action.stop')}
+          </button>
+        ) : (
+          <button
+            className="primary"
+            onClick={() => void send()}
+            disabled={prompt.trim() === '' || assistant === ''}
+          >
+            {t('action.send')}
+          </button>
+        )}
       </div>
     </section>
   );

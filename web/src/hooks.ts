@@ -6,15 +6,21 @@ import {
   fetchComputeHealth,
   fetchConversation,
   fetchConversations,
+  fetchDocuments,
+  fetchFavorites,
   fetchIdentity,
   fetchModels,
   fetchPlatform,
   readCredential,
+  setFavorite,
   writeCredential,
   type Assistant,
   type ComputeHealth,
   type ConversationDetail,
   type ConversationList,
+  type DocumentList,
+  type Favorite,
+  type FavoriteKind,
   type Identity,
   type ModelCatalogue,
   type Platform,
@@ -130,11 +136,69 @@ export function useConversation(id: string | null): UseQueryResult<ConversationD
   });
 }
 
+export function useDocuments(enabled: boolean): UseQueryResult<DocumentList, Error> {
+  const [credential] = useCredential();
+  return useQuery<DocumentList, Error>({
+    queryKey: ['documents', credential],
+    queryFn: ({ signal }) => fetchDocuments(signal),
+    enabled: enabled && credential !== '',
+    // Ingestion is asynchronous, so a document uploaded a moment ago is still
+    // moving from pending to ready while the page is open.
+    refetchInterval: (query) =>
+      (query.state.data?.documents ?? []).some(
+        (document) => document.status === 'pending' || document.status === 'processing',
+      )
+        ? 4_000
+        : false,
+    retry: retryUnlessClientError,
+  });
+}
+
+export function useFavorites(enabled: boolean): UseQueryResult<Favorite[], Error> {
+  const [credential] = useCredential();
+  return useQuery<Favorite[], Error>({
+    queryKey: ['favorites', credential],
+    queryFn: async ({ signal }) => (await fetchFavorites(signal)).favorites ?? [],
+    enabled: enabled && credential !== '',
+    retry: retryUnlessClientError,
+  });
+}
+
+/**
+ * Marks or unmarks a favourite and refreshes the list.
+ *
+ * The call is not optimistic: the server drops a mark whose target it cannot
+ * resolve, so showing one before it answers could show a star that disappears
+ * on the next load.
+ */
+export function useToggleFavorite(): (
+  kind: FavoriteKind,
+  targetId: string,
+  marked: boolean,
+) => Promise<void> {
+  const queryClient = useQueryClient();
+  return useCallback(
+    async (kind, targetId, marked) => {
+      await setFavorite(kind, targetId, marked);
+      await queryClient.invalidateQueries({ queryKey: ['favorites'] });
+    },
+    [queryClient],
+  );
+}
+
 /** Refreshes the history list after a turn changes a title or its counters. */
 export function useRefreshHistory(): () => void {
   const queryClient = useQueryClient();
   return useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: ['conversations'] });
+  }, [queryClient]);
+}
+
+/** Refreshes the corpus after an upload or a deletion. */
+export function useRefreshDocuments(): () => void {
+  const queryClient = useQueryClient();
+  return useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: ['documents'] });
   }, [queryClient]);
 }
 

@@ -8,6 +8,10 @@ import type { TranslationKey } from './i18n';
 export const SCOPE_MODELS_READ = 'models:read';
 export const SCOPE_ASSISTANTS_READ = 'assistants:read';
 export const SCOPE_CHAT = 'chat:completions';
+export const SCOPE_KNOWLEDGE_READ = 'knowledge:read';
+export const SCOPE_KNOWLEDGE_WRITE = 'knowledge:write';
+export const SCOPE_TOOLS_READ = 'tools:read';
+export const SCOPE_AGENT_RUN = 'agent:run';
 export const SCOPE_ADMIN_KEYS = 'admin:keys';
 export const SCOPE_ADMIN_ASSISTANTS = 'admin:assistants';
 
@@ -15,6 +19,10 @@ const KNOWN_SCOPES = [
   SCOPE_MODELS_READ,
   SCOPE_ASSISTANTS_READ,
   SCOPE_CHAT,
+  SCOPE_KNOWLEDGE_READ,
+  SCOPE_KNOWLEDGE_WRITE,
+  SCOPE_TOOLS_READ,
+  SCOPE_AGENT_RUN,
   SCOPE_ADMIN_KEYS,
   SCOPE_ADMIN_ASSISTANTS,
 ] as const;
