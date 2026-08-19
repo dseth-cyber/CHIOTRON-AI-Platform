@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ApiError, streamChat, type TokenUsage } from './api';
 import { FavoriteButton } from './components/FavoriteButton';
 import { useAssistants, useConversation, useFavorites, useRefreshHistory } from './hooks';
+import { useBrandIcon } from '@/contexts/BrandContext';
 import { useTranslation } from './LanguageContext';
 import type { ChatTarget, Navigate } from './navigation';
 
@@ -50,6 +51,7 @@ export function ChatWorkspace({
   onNavigate: Navigate;
 }) {
   const { t, formatNumber } = useTranslation();
+  const { customIcon } = useBrandIcon();
   const assistants = useAssistants(true);
   const favorites = useFavorites(true);
   const refreshHistory = useRefreshHistory();
@@ -637,8 +639,12 @@ export function ChatWorkspace({
         ) : isHeroMode ? (
           /* Gemini / ChatGPT Style Hero Greeting */
           <div className="gemini-hero">
-            <div className="hero-avatar">
-              <span className="hero-sparkle-anim">✨</span>
+            <div className={`hero-avatar ${customIcon ? 'has-custom-icon' : ''}`}>
+              {customIcon ? (
+                <img src={customIcon} alt="Custom Brand Logo" className="hero-custom-icon-anim" />
+              ) : (
+                <span className="hero-sparkle-anim">✨</span>
+              )}
             </div>
             <h1 className="hero-greeting">สวัสดี มีอะไรให้ฉันช่วยหรือ?</h1>
             <p className="hero-subgreeting">

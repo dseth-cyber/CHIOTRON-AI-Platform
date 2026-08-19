@@ -2291,22 +2291,67 @@ html.theme-light .upload-hint-text code {
   animation: fadeIn 0.4s ease-out;
 }
 .hero-avatar {
-  width: 56px;
-  height: 56px;
+  width: 64px;
+  height: 64px;
   border-radius: 50%;
-  background: linear-gradient(135deg, rgba(0, 210, 255, 0.2) 0%, rgba(168, 85, 247, 0.2) 100%);
-  border: 1px solid rgba(0, 210, 255, 0.4);
+  background: linear-gradient(135deg, rgba(0, 210, 255, 0.25) 0%, rgba(168, 85, 247, 0.25) 100%);
+  border: 1.5px solid rgba(0, 210, 255, 0.4);
   display: grid;
   place-items: center;
-  box-shadow: 0 0 24px rgba(0, 210, 255, 0.3);
+  box-shadow: 0 0 28px rgba(0, 210, 255, 0.35);
+  position: relative;
+  overflow: hidden;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.hero-avatar.has-custom-icon {
+  background: radial-gradient(circle, rgba(0, 210, 255, 0.2) 0%, rgba(168, 85, 247, 0.15) 60%, rgba(0, 0, 0, 0.25) 100%);
+  border: 1.5px solid rgba(0, 210, 255, 0.5);
+  box-shadow: 0 0 32px rgba(0, 210, 255, 0.45), 0 0 16px rgba(168, 85, 247, 0.3);
+  padding: 8px;
 }
 .hero-sparkle-anim {
   font-size: 1.8rem;
   animation: pulseSparkle 2s ease-in-out infinite alternate;
 }
+.hero-custom-icon-anim {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: 50%;
+  animation: customIconFloat 3s ease-in-out infinite alternate;
+  filter: drop-shadow(0 0 10px rgba(0, 210, 255, 0.6));
+}
+@keyframes customIconFloat {
+  0% {
+    transform: scale(0.92) translateY(2px) rotate(-3deg);
+    filter: drop-shadow(0 0 6px rgba(0, 210, 255, 0.5));
+  }
+  50% {
+    transform: scale(1.06) translateY(-3px) rotate(3deg);
+    filter: drop-shadow(0 0 18px rgba(0, 210, 255, 0.85)) drop-shadow(0 0 10px rgba(168, 85, 247, 0.7));
+  }
+  100% {
+    transform: scale(0.96) translateY(0px) rotate(0deg);
+    filter: drop-shadow(0 0 10px rgba(0, 210, 255, 0.6));
+  }
+}
 @keyframes pulseSparkle {
   0% { transform: scale(0.9); opacity: 0.8; }
   100% { transform: scale(1.15); opacity: 1; filter: drop-shadow(0 0 8px #00d2ff); }
+}
+
+html.theme-light .hero-avatar {
+  background: linear-gradient(135deg, rgba(2, 132, 199, 0.15) 0%, rgba(124, 58, 237, 0.15) 100%);
+  border-color: rgba(2, 132, 199, 0.35);
+  box-shadow: 0 4px 20px rgba(2, 132, 199, 0.2);
+}
+html.theme-light .hero-avatar.has-custom-icon {
+  background: radial-gradient(circle, rgba(2, 132, 199, 0.15) 0%, rgba(255, 255, 255, 0.9) 100%);
+  border-color: rgba(2, 132, 199, 0.4);
+  box-shadow: 0 4px 24px rgba(2, 132, 199, 0.25);
+}
+html.theme-light .hero-custom-icon-anim {
+  filter: drop-shadow(0 2px 8px rgba(2, 132, 199, 0.35));
 }
 .hero-greeting {
   font-size: 2.1rem;
