@@ -599,6 +599,7 @@ html.theme-glassmorphism .module-card,
 html.theme-glassmorphism .governance-card,
 html.theme-glassmorphism .panel,
 html.theme-glassmorphism .detail-item,
+html.theme-glassmorphism .detail-intro,
 html.theme-glassmorphism .phase,
 html.theme-glassmorphism .progress-panel,
 html.theme-glassmorphism .quick-card,
@@ -609,6 +610,12 @@ html.theme-glassmorphism .notice {
   border-radius: 16px;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
   color: #ffffff;
+}
+html.theme-glassmorphism .detail-intro p {
+  color: #ffffff;
+}
+html.theme-glassmorphism .detail-intro span {
+  color: #22d3ee;
 }
 html.theme-glassmorphism .stat-card:hover,
 html.theme-glassmorphism .module-card:hover,
@@ -1027,6 +1034,7 @@ html.theme-light .module-card,
 html.theme-light .governance-card,
 html.theme-light .panel,
 html.theme-light .detail-item,
+html.theme-light .detail-intro,
 html.theme-light .phase,
 html.theme-light .progress-panel,
 html.theme-light .quick-card,
@@ -1035,6 +1043,26 @@ html.theme-light .notice {
   border: 1px solid #e2e8f0;
   color: #0f172a;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+html.theme-light .detail-intro p {
+  color: #0f172a;
+}
+html.theme-light .detail-intro span {
+  color: #0284c7;
+}
+html.theme-light .detail-item > span {
+  color: #0284c7;
+}
+html.theme-light .detail-item h2 {
+  color: #0f172a;
+}
+html.theme-light .detail-item p {
+  color: #475569;
+}
+html.theme-light .detail-item b {
+  color: #0284c7;
+  background: #e0f2fe;
+  border: 1px solid #bae6fd;
 }
 html.theme-light .stat-card strong,
 html.theme-light .module-card h2,
