@@ -670,6 +670,71 @@ html.theme-glassmorphism .secondary:hover {
   color: #ffffff;
 }
 
+html.theme-glassmorphism .field input,
+html.theme-glassmorphism .field select,
+html.theme-glassmorphism .composer textarea {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  color: #ffffff;
+}
+html.theme-glassmorphism .field input:focus,
+html.theme-glassmorphism .field select:focus,
+html.theme-glassmorphism .composer textarea:focus {
+  border-color: #00d2ff;
+  box-shadow: 0 0 16px rgba(0, 210, 255, 0.35);
+  background: rgba(255, 255, 255, 0.08);
+}
+html.theme-glassmorphism .caution {
+  background: rgba(245, 158, 11, 0.12) !important;
+  border: 1px solid rgba(245, 158, 11, 0.3) !important;
+  color: #fde68a !important;
+  backdrop-filter: blur(16px);
+  border-radius: 12px;
+}
+html.theme-glassmorphism .caution code {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fde68a;
+}
+html.theme-glassmorphism .notice {
+  background: rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-left: 3px solid #00d2ff;
+  color: #ffffff;
+  border-radius: 12px;
+}
+html.theme-glassmorphism .notice b {
+  color: #ffffff;
+}
+html.theme-glassmorphism .notice p {
+  color: #e2e8f0;
+}
+html.theme-glassmorphism .transcript {
+  background: rgba(18, 10, 36, 0.45);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+}
+html.theme-glassmorphism .turn.user {
+  background: linear-gradient(135deg, rgba(0, 210, 255, 0.25) 0%, rgba(58, 123, 213, 0.25) 100%);
+  border: 1px solid rgba(0, 210, 255, 0.3);
+  backdrop-filter: blur(12px);
+  color: #ffffff;
+  border-radius: 14px;
+}
+html.theme-glassmorphism .turn.assistant {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(12px);
+  color: #ffffff;
+  border-radius: 14px;
+}
+html.theme-glassmorphism .turn-role {
+  color: #22d3ee;
+}
+
 /* ==========================================================================
    Topbar Controls (Theme Switcher & Language Switcher)
    ========================================================================== */
@@ -1163,6 +1228,16 @@ html.theme-light .turn.assistant {
   background: #ffffff;
   border-color: #e2e8f0;
   color: #0f172a;
+}
+html.theme-light .caution {
+  background: #fffbeb !important;
+  border: 1px solid #fde68a !important;
+  color: #92400e !important;
+  border-radius: 8px;
+}
+html.theme-light .caution code {
+  background: #fef3c7;
+  color: #92400e;
 }
 .searchable-trigger:hover:not(:disabled) { border-color: #2fc9ad; }
 .searchable-trigger .placeholder { color: var(--color-text-faint, #7e97a8); }
