@@ -3,6 +3,16 @@
 // This lives apart from the shell so a page can navigate without importing the
 // shell that renders it.
 
+export type DetailKind =
+  | 'rules'
+  | 'architecture'
+  | 'api'
+  | 'module'
+  | 'event'
+  | 'map'
+  | 'flags'
+  | 'prompts';
+
 export type View =
   | 'home'
   | 'chat'
@@ -18,8 +28,7 @@ export type View =
   | 'settings'
   | 'portal'
   | 'roadmap'
-  | 'rules'
-  | 'architecture';
+  | DetailKind;
 
 /** Which conversation, or which assistant, the chat page should open with. */
 export type ChatTarget = { conversationId?: string; assistant?: string };

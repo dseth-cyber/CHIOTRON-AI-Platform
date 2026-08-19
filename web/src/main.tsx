@@ -12,7 +12,7 @@ import { ThemeSwitcher } from './components/ThemeSwitcher';
 import type { TranslationKey } from './i18n';
 import { useComputeHealth, useCredential, useModels, usePlatform } from './hooks';
 import { installTheme } from './theme';
-import type { ChatTarget, Navigate, View } from './navigation';
+import type { ChatTarget, DetailKind, Navigate, View } from './navigation';
 import { Home } from './pages/Home';
 import { History } from './pages/History';
 import { Assistants } from './pages/Assistants';
@@ -101,6 +101,56 @@ const NAV_GROUPS: NavGroup[] = [
   },
 ];
 
+const CRUMBS: Record<View, TranslationKey> = {
+  home: 'page.home.crumb',
+  chat: 'page.chat.crumb',
+  analyze: 'nav.group.workspace',
+  create: 'nav.group.workspace',
+  history: 'page.history.crumb',
+  assistants: 'page.assistants.crumb',
+  documents: 'page.documents.crumb',
+  search: 'page.search.crumb',
+  favorites: 'page.favorites.crumb',
+  shared: 'page.shared.crumb',
+  providers: 'nav.group.platform',
+  settings: 'page.settings.crumb',
+  portal: 'page.portal.crumb',
+  roadmap: 'page.roadmap.crumb',
+  rules: 'page.rules.crumb',
+  architecture: 'page.architecture.crumb',
+  api: 'page.portal.crumb',
+  module: 'page.portal.crumb',
+  event: 'page.portal.crumb',
+  map: 'page.portal.crumb',
+  flags: 'page.portal.crumb',
+  prompts: 'page.portal.crumb',
+};
+
+const TITLES: Record<View, TranslationKey> = {
+  home: 'page.home.title',
+  chat: 'page.chat.title',
+  analyze: 'nav.analyze',
+  create: 'nav.create',
+  history: 'page.history.title',
+  assistants: 'page.assistants.title',
+  documents: 'page.documents.title',
+  search: 'page.search.title',
+  favorites: 'page.favorites.title',
+  shared: 'page.shared.title',
+  providers: 'nav.providers',
+  settings: 'page.settings.title',
+  portal: 'page.portal.title',
+  roadmap: 'page.roadmap.title',
+  rules: 'page.rules.title',
+  architecture: 'page.architecture.title',
+  api: 'module.api.title',
+  module: 'module.module.title',
+  event: 'module.event.title',
+  map: 'module.map.title',
+  flags: 'module.flags.title',
+  prompts: 'module.prompts.title',
+};
+
 function App() {
   const { t } = useTranslation();
   const { customIcon } = useBrandIcon();
@@ -129,10 +179,13 @@ function App() {
     setView(next);
   };
 
+  const isDetailPage = (v: View): v is DetailKind =>
+    ['rules', 'architecture', 'api', 'module', 'event', 'map', 'flags', 'prompts'].includes(v);
+
   // The governance detail pages are opened from the Developer Portal, so that
   // nav entry has to stay lit while one of them is on screen.
   const isActive = (item: NavItem) =>
-    item.view === view || (item.view === 'portal' && (view === 'rules' || view === 'architecture'));
+    item.view === view || (item.view === 'portal' && isDetailPage(view));
 
   return (
     <div className={`app-shell ${collapsed ? 'sidebar-collapsed' : ''}`}>
@@ -213,7 +266,11 @@ function App() {
 
       <main className="content">
         <header className="topbar">
-          <div className="top-actions" style={{ marginLeft: 'auto' }}>
+          <div className="topbar-left">
+            <span className="crumb">{t(CRUMBS[view] ?? 'page.portal.crumb')}</span>
+            <h1>{t(TITLES[view] ?? 'page.portal.title')}</h1>
+          </div>
+          <div className="top-actions">
             <ThemeSwitcher compact />
             <LanguageSwitcher />
             <button className="secondary" onClick={() => setShowConnect(true)}>{t('action.apiKey')}</button>
@@ -244,7 +301,7 @@ function App() {
         {view === 'settings' && <Settings onConnect={() => setShowConnect(true)} />}
         {view === 'portal' && <DeveloperPortal overview={overview} onRoadmap={() => setView('roadmap')} onOpen={setView} onConnect={() => setShowConnect(true)} />}
         {view === 'roadmap' && <Roadmap phases={phases} overview={overview} expanded={expanded} setExpanded={setExpanded} onUpdate={setShowUpdate} onAdd={() => setShowAdd(true)} />}
-        {(view === 'rules' || view === 'architecture') && <DetailPage kind={view} onBack={() => setView('portal')} />}
+        {isDetailPage(view) && <DetailPage kind={view} onBack={() => setView('portal')} />}
       </main>
 
       {showConnect && <ConnectDialog onClose={() => setShowConnect(false)} />}
@@ -273,7 +330,7 @@ function Stat({ label, value, hint, tone }: { label: string; value: string; hint
   );
 }
 
-function DeveloperPortal({ overview, onRoadmap, onOpen, onConnect }: { overview: Overview; onRoadmap: () => void; onOpen: (view: 'rules' | 'architecture') => void; onConnect: () => void }) {
+function DeveloperPortal({ overview, onRoadmap, onOpen, onConnect }: { overview: Overview; onRoadmap: () => void; onOpen: (view: DetailKind) => void; onConnect: () => void }) {
   const { t, formatNumber } = useTranslation();
   const [credential] = useCredential();
   const connected = credential !== '';
@@ -348,7 +405,7 @@ function DeveloperPortal({ overview, onRoadmap, onOpen, onConnect }: { overview:
       <section className="portal-layout">
         <div className="module-grid">
           {MODULE_KEYS.map((key) => (
-            <button className="module-card" key={key}>
+            <button className="module-card" key={key} onClick={() => onOpen(key)}>
               <span className="module-tag">{MODULE_TAGS[key]}</span>
               <h2>{t(`module.${key}.title` as TranslationKey)}</h2>
               <p>{t(`module.${key}.body` as TranslationKey)}</p>
@@ -375,33 +432,133 @@ function DeveloperPortal({ overview, onRoadmap, onOpen, onConnect }: { overview:
   );
 }
 
-function DetailPage({ kind, onBack }: { kind: 'rules' | 'architecture'; onBack: () => void }) {
+function DetailPage({ kind, onBack }: { kind: DetailKind; onBack: () => void }) {
   const { t } = useTranslation();
-  const rules = Array.from({ length: 12 }, (_, i) => [
-    t(`governance.rule.${i + 1}.title` as TranslationKey),
-    t(`governance.rule.${i + 1}.desc` as TranslationKey),
-  ]);
-  const stack = Array.from({ length: 10 }, (_, i) => [
-    t(`governance.stack.${i + 1}.title` as TranslationKey),
-    t(`governance.stack.${i + 1}.desc` as TranslationKey),
-  ]);
-  const items = kind === 'rules' ? rules : stack;
+
+  const getDetails = (): { intro: string; count: string; items: [string, string, string?][] } => {
+    switch (kind) {
+      case 'rules':
+        return {
+          intro: t('detail.rules.intro'),
+          count: t('detail.rules.count'),
+          items: Array.from({ length: 12 }, (_, i) => [
+            t(`governance.rule.${i + 1}.title` as TranslationKey),
+            t(`governance.rule.${i + 1}.desc` as TranslationKey),
+            t('detail.required'),
+          ]),
+        };
+      case 'architecture':
+        return {
+          intro: t('detail.architecture.intro'),
+          count: t('detail.architecture.count'),
+          items: Array.from({ length: 10 }, (_, i) => [
+            t(`governance.stack.${i + 1}.title` as TranslationKey),
+            t(`governance.stack.${i + 1}.desc` as TranslationKey),
+          ]),
+        };
+      case 'api':
+        return {
+          intro: 'สัญญาเกตเวย์ OpenAPI/REST ตามเวอร์ชัน สิทธิ์ที่ต้องใช้ (Scopes) และโครงสร้างรับส่งข้อมูล',
+          count: '9 เกตเวย์เอนด์พอยต์มาตรฐาน (Gateway Endpoints)',
+          items: [
+            ['POST /api/v1/chat/completions', 'สร้างคำตอบจากโมเดล LLM รองรับ Server-Sent Events (SSE) Streaming พร้อมระบบตรวจจับและ Redact ข้อมูล PII แบบเรียลไทม์ · สิทธิ์: chat:completions', 'POST'],
+            ['GET /api/v1/models', 'อ่านรายชื่อโมเดล AI ที่พร้อมใช้งานในระบบ ตรวจสอบ Routing ระหว่าง Local GPU (Ollama) และ Cloud AI · สิทธิ์: models:read', 'GET'],
+            ['GET /api/v1/assistants', 'ค้นหาและจัดการตัวตนผู้ช่วย AI, พรอมป์ตประจำตัว, และการเชื่อมโยง Tool · สิทธิ์: assistants:read', 'GET'],
+            ['POST /api/v1/assistants', 'สร้างและแก้ไขตัวตนผู้ช่วย AI กำหนดสิทธิ์และเครื่องมือที่อนุญาต · สิทธิ์: admin:assistants', 'POST'],
+            ['POST /api/v1/knowledge/query', 'ทำการค้นหาเชิงความหมาย (Semantic Search) ด้วย Cosine Similarity บนฐานข้อมูล pgvector · สิทธิ์: knowledge:read', 'POST'],
+            ['POST /api/v1/knowledge/documents', 'อัปโหลดและย่อยเอกสาร (Document Ingestion & Chunking) เข้าสู่ Knowledge Base ประจำ Tenant · สิทธิ์: knowledge:write', 'POST'],
+            ['GET /api/v1/admin/providers', 'ดูรายการผู้ให้บริการโมเดลคอมพิวต์และตาราง Route ทั้งหมด · สิทธิ์: admin:keys', 'GET'],
+            ['GET /api/v1/admin/settings', 'อ่านและแก้ไขการตั้งค่าแพลตฟอร์มแบบไดนามิกโดยไม่ต้อง Restart ระบบ · สิทธิ์: admin:keys', 'GET'],
+            ['GET /api/v1/health', 'ตรวจสอบสถานะการทำงานของ Gateway, GPU VRAM, Redis และ PostgreSQL · สิทธิ์: สาธารณะ (Public)', 'GET'],
+          ],
+        };
+      case 'module':
+        return {
+          intro: 'ขอบเขต Control Plane สถานะการทำงาน และการพึ่งพาซึ่งกันและกันของแต่ละ Subsystem',
+          count: '7 โมดูลหลักของระบบ (Core Subsystems)',
+          items: [
+            ['HTTP Gateway & Ingress Core', 'ดูแล Endpoint ภายนอก, จัดการ mTLS, Rate Limiting และกระจายโหลดงาน · สถานะ: ACTIVE', 'ACTIVE'],
+            ['Authentication & Scope Governor', 'ถอดรหัสและตรวจสอบความถูกต้องของ API Key / JWT Token พร้อมบังคับใช้นโยบาย Scope · สถานะ: ACTIVE', 'ACTIVE'],
+            ['Compute Plane & Ollama Orchestrator', 'เชื่อมต่อกับ Ollama Daemon ในเครื่อง และ Cloud AI Adapters (OpenAI, Anthropic, Google) · สถานะ: ACTIVE', 'ACTIVE'],
+            ['pgvector & Knowledge Pipeline', 'จัดเก็บและสืบค้น Vector Embeddings แบบ Multi-Tenant พร้อม HNSW Index · สถานะ: ACTIVE', 'ACTIVE'],
+            ['Agent Framework (ReAct)', 'ระบบวงรอบการคิดของ Agent แบบ Multi-Turn และเชื่อมต่อกับเครื่องมือภายนอกผ่าน ERP Sandbox · สถานะ: ACTIVE', 'ACTIVE'],
+            ['Data Governance & DLP Engine', 'ตรวจจับและ Redact ข้อมูลส่วนบุคคล (PII), จัดการ Token Budget รายแผนก และบันทึก Audit Log · สถานะ: ACTIVE', 'ACTIVE'],
+            ['Redis Semantic Caching & Token Limiter', 'บันทึกคำตอบซ้ำในหน่วยความจำความเร็วสูง และจำกัดอัตราการเรียกใช้งาน · สถานะ: ACTIVE', 'ACTIVE'],
+          ],
+        };
+      case 'event':
+        return {
+          intro: 'ข้อเสนอ Kafka topic กลุ่มผู้บริโภค (Consumer Groups) และนโยบายการเก็บข้อมูล (Retention Policies)',
+          count: '5 ท็อปปิกอีเวนต์หลัก (Event Topics)',
+          items: [
+            ['ai.audit.access.v1', 'บันทึก Log ทุกการเรียกใช้โมเดล, ผู้เรียก, ปริมาณ Token, และผลการอนุญาต · นโยบายจัดเก็บ: 90 วัน', 'KAFKA'],
+            ['ai.chat.stream.v1', 'กระจายสตรีม Token ไปยัง WebSocket และระบบติดตามแบบ Real-time · นโยบายจัดเก็บ: 7 วัน', 'KAFKA'],
+            ['ai.governance.violation.v1', 'แจ้งเตือนเมื่อตรวจพบการพยายามส่งข้อมูลลับหรือละเมิดนโยบายความปลอดภัย · นโยบายจัดเก็บ: 365 วัน', 'KAFKA'],
+            ['ai.eval.result.v1', 'บันทึกคะแนนประเมินคุณภาพของคำตอบเทียบกับ Ground-Truth Testset · นโยบายจัดเก็บ: 180 วัน', 'KAFKA'],
+            ['ai.knowledge.indexed.v1', 'แจ้งเตือนเมื่อเอกสารถูกสร้าง Vector Embedding และนำเข้าสู่ระบบสำเร็จ · นโยบายจัดเก็บ: 30 วัน', 'KAFKA'],
+          ],
+        };
+      case 'map':
+        return {
+          intro: 'เส้นทางการเรียกบริการแบบซิงโครนัสและอะซิงโครนัสที่อนุญาตระหว่างคอมโพเนนต์',
+          count: '6 เส้นทางสถาปัตยกรรม (Service Topology Paths)',
+          items: [
+            ['Web Portal ➔ HTTP Gateway', 'การเรียก API แบบ Synchronous REST/JSON และ Server-Sent Events (SSE)', 'REST / SSE'],
+            ['HTTP Gateway ➔ PostgreSQL 16 (pgvector)', 'เชื่อมต่อฐานข้อมูลเชิงสัมพันธ์และ Vector ผ่าน Connection Pool (pgx)', 'POSTGRESQL'],
+            ['HTTP Gateway ➔ Redis 7', 'เชื่อมต่อหน่วยความจำ In-Memory เพื่อทำ Semantic Cache และ Rate Limit Counters', 'REDIS'],
+            ['HTTP Gateway ➔ Compute Plane (Ollama / vLLM)', 'ส่งต่องานประมวลผล Local GPU Inference ผ่าน Internal LAN แบบ Synchronous', 'COMPUTE'],
+            ['HTTP Gateway ➔ Cloud AI Providers', 'เชื่อมต่อภายนอกผ่าน HTTPS / TLS Egress ตามเพดานความปลอดภัยของข้อมูล', 'CLOUD AI'],
+            ['Control Plane ➔ Apache Kafka / Loki', 'ส่งข้อมูล Log และ Event แบบ Asynchronous และส่ง Trace ผ่าน OTLP', 'ASYNC EVENT'],
+          ],
+        };
+      case 'flags':
+        return {
+          intro: 'ฟีเจอร์แฟล็กควบคุมการทำงาน ทยอยเปิดใช้งานได้ทันทีโดยไม่ต้องดีพลอยใหม่',
+          count: '6 ฟีเจอร์แฟล็กแบบไดนามิก (Dynamic Feature Flags)',
+          items: [
+            ['enable_cloud_routing', 'อนุญาตให้ระบบกระจายงานไปยัง Cloud AI เมื่อ Local GPU มีคิวยาวเกินกำหนด · ค่าปัจจุบัน: เปิดใช้งาน (Enabled)', 'ENABLED'],
+            ['enable_dlp_redaction', 'บังคับใช้ระบบลบข้อมูลอ่อนไหว (PII) อัตโนมัติก่อนส่งข้อความเข้าโมเดล · ค่าปัจจุบัน: เปิดใช้งาน (Enabled)', 'ENABLED'],
+            ['enable_redis_semantic_cache', 'บันทึกและดึงคำตอบของคำถามเดิมจากแคช เพื่อประหยัดพลังงาน GPU · ค่าปัจจุบัน: เปิดใช้งาน (Enabled)', 'ENABLED'],
+            ['enable_mcp_erp_tools', 'อนุญาตให้ AI เรียกใช้งานเครื่องมืออ่านข้อมูลระบบ ERP ขององค์กร · ค่าปัจจุบัน: เปิดใช้งาน (Enabled)', 'ENABLED'],
+            ['enable_eval_scoring', 'เปิดระบบประเมินความแม่นยำของคำตอบโดยอัตโนมัติเทียบกับโจทย์มาตรฐาน · ค่าปัจจุบัน: เปิดใช้งาน (Enabled)', 'ENABLED'],
+            ['enable_multilingual_asr', 'เปิดระบบถอดเสียงภาษาไทยและภาษาอังกฤษเป็นข้อความ · ค่าปัจจุบัน: เปิดใช้งาน (Enabled)', 'ENABLED'],
+          ],
+        };
+      case 'prompts':
+        return {
+          intro: 'คลังคำสั่งผู้ช่วยที่อนุมัติแล้ว เวอร์ชันของนโยบาย และแนวทางการกำกับดูแลความปลอดภัย',
+          count: '5 เทมเพลตคำสั่งมาตรฐาน (Approved System Prompts)',
+          items: [
+            ['general-assistant-v1 (v1.2)', 'คำสั่งพื้นฐานสำหรับผู้ช่วยอัจฉริยะทั่วไป กำหนดมารยาทและการรักษาความลับขององค์กร', 'PROMPT'],
+            ['code-reviewer-expert (v2.0)', 'คำสั่งเฉพาะทางสำหรับผู้เชี่ยวชาญการตรวจสอบโค้ด มุ่งเน้นความปลอดภัยและประสิทธิภาพ', 'PROMPT'],
+            ['erp-analyst-secure (v1.1)', 'คำสั่งสำหรับสรุปรายงานและวิเคราะห์ข้อมูลบัญชี/สต็อกสินค้าจากระบบ ERP', 'PROMPT'],
+            ['data-governance-guard (v1.0)', 'คำสั่งกำกับด้านความปลอดภัย ตรวจสอบการส่งออกข้อมูลลับก่อนประมวลผล', 'PROMPT'],
+            ['text-to-sql-analyst (v1.3)', 'คำสั่งสร้าง SQL แบบ Read-Only พร้อมระบบป้องกันคำสั่งอันตราย (Blocklist)', 'PROMPT'],
+          ],
+        };
+    }
+  };
+
+  const { intro, count, items } = getDetails();
 
   return (
     <section className="detail-page">
       <div className="detail-intro">
         <div>
-          <p>{kind === 'rules' ? t('detail.rules.intro') : t('detail.architecture.intro')}</p>
-          <span>{kind === 'rules' ? t('detail.rules.count') : t('detail.architecture.count')}</span>
+          <p>{intro}</p>
+          <span>{count}</span>
         </div>
         <button className="secondary" onClick={onBack}>{t('action.backToPortal')}</button>
       </div>
       <section className="detail-list">
-        {items.map(([title, description], index) => (
+        {items.map(([title, description, tag], index) => (
           <article className="detail-item" key={title}>
             <span>{String(index + 1).padStart(2, '0')}</span>
-            <div><h2>{title}</h2><p>{description}</p></div>
-            {kind === 'rules' && <b>{t('detail.required')}</b>}
+            <div>
+              <h2>{title}</h2>
+              <p>{description}</p>
+            </div>
+            {tag && <b>{tag}</b>}
           </article>
         ))}
       </section>
