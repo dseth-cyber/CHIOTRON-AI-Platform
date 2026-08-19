@@ -170,6 +170,7 @@ function App() {
   const [view, setView] = useState<View>('home');
   const [chatTarget, setChatTarget] = useState<ChatTarget | null>(null);
   const [collapsed, setCollapsed] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [phases, setPhases] = useState<Phase[]>(loadSavedPhases);
   const [expanded, setExpanded] = useState<number | null>(1);
   const [showAdd, setShowAdd] = useState(false);
@@ -207,6 +208,7 @@ function App() {
   // Navigating to chat with a target remounts the workspace, so a conversation
   // opened from history replaces whatever was on screen rather than merging with it.
   const navigate: Navigate = (next, target) => {
+    setMobileMenuOpen(false);
     if (next === 'chat') setChatTarget(target ?? {});
     setView(next);
   };
@@ -221,7 +223,39 @@ function App() {
 
   return (
     <div className={`app-shell ${collapsed ? 'sidebar-collapsed' : ''}`}>
-      <aside className={`sidebar ${collapsed ? 'collapsed' : ''}`}>
+      {/* Mobile Top App Bar (Sleek and Minimalist) */}
+      <header className="mobile-top-bar">
+        <button
+          type="button"
+          className="mobile-hamburger-btn"
+          onClick={() => setMobileMenuOpen((open) => !open)}
+          aria-label="Toggle navigation drawer"
+        >
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="3" y1="12" x2="21" y2="12" />
+            <line x1="3" y1="6" x2="21" y2="6" />
+            <line x1="3" y1="18" x2="21" y2="18" />
+          </svg>
+        </button>
+        <div className="mobile-brand" onClick={() => navigate('home')}>
+          <span className="brand-mark" style={{ overflow: 'hidden' }}>
+            {customIcon ? <img src={customIcon} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} /> : 'C'}
+          </span>
+          <span className="brand-text">CHIOTRON</span>
+        </div>
+        <div className="mobile-top-actions">
+          <ThemeSwitcher compact />
+          <LanguageSwitcher />
+        </div>
+      </header>
+
+      {/* Backdrop Drawer Overlay for Mobile */}
+      {mobileMenuOpen && (
+        <div className="mobile-drawer-backdrop" onClick={() => setMobileMenuOpen(false)} />
+      )}
+
+      {/* Sidebar Drawer */}
+      <aside className={`sidebar ${collapsed ? 'collapsed' : ''} ${mobileMenuOpen ? 'mobile-open' : ''}`}>
         <div className="brand">
           <div
             className="brand-title"
@@ -244,38 +278,49 @@ function App() {
             </span>
             {!collapsed && <span className="brand-text">CHIOTRON</span>}
           </div>
-          {!collapsed && (
-            <div className="sidebar-header-actions">
-              <button
-                type="button"
-                className="sidebar-icon-btn"
-                onClick={() => navigate('search')}
-                title={t('nav.search')}
-                aria-label={t('nav.search')}
-              >
-                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="11" cy="11" r="8" />
-                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
-                </svg>
-              </button>
-              <button
-                type="button"
-                className="sidebar-icon-btn"
-                onClick={() => setCollapsed(true)}
-                title="ยุบเมนู (Collapse)"
-                aria-label="Collapse Sidebar"
-              >
-                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                  <line x1="9" y1="3" x2="9" y2="21" />
-                </svg>
-              </button>
-            </div>
-          )}
+          <div className="sidebar-header-actions">
+            <button
+              type="button"
+              className="sidebar-icon-btn mobile-close-btn"
+              onClick={() => setMobileMenuOpen(false)}
+              title="ปิดเมนู (Close)"
+              aria-label="Close Mobile Menu"
+            >
+              ✕
+            </button>
+            {!collapsed && (
+              <>
+                <button
+                  type="button"
+                  className="sidebar-icon-btn desktop-only"
+                  onClick={() => navigate('search')}
+                  title={t('nav.search')}
+                  aria-label={t('nav.search')}
+                >
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="11" cy="11" r="8" />
+                    <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  className="sidebar-icon-btn desktop-only"
+                  onClick={() => setCollapsed(true)}
+                  title="ยุบเมนู (Collapse)"
+                  aria-label="Collapse Sidebar"
+                >
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                    <line x1="9" y1="3" x2="9" y2="21" />
+                  </svg>
+                </button>
+              </>
+            )}
+          </div>
         </div>
         {NAV_GROUPS.map((group) => (
           <div className="nav-group" key={group.label}>
-            {!collapsed && <p className="workspace-label">{t(group.label)}</p>}
+            {(!collapsed || mobileMenuOpen) && <p className="workspace-label">{t(group.label)}</p>}
             <nav className="side-nav" aria-label={t(group.label)}>
               {group.items.map((item) => (
                 <button
@@ -285,7 +330,7 @@ function App() {
                   title={t(item.label)}
                 >
                   <span className="nav-item-mark">{item.mark}</span>
-                  {!collapsed && <span className="nav-item-text">{t(item.label)}</span>}
+                  {(!collapsed || mobileMenuOpen) && <span className="nav-item-text">{t(item.label)}</span>}
                 </button>
               ))}
             </nav>

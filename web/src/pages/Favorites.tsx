@@ -90,6 +90,7 @@ export function Favorites({ onNavigate }: { onNavigate: Navigate }) {
         loading={favorites.isPending}
         error={favorites.isError ? favorites.error.message : undefined}
         empty={t('favorites.empty.body')}
+        onRowClick={open}
       />
     </>
   );

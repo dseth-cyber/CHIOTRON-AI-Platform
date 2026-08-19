@@ -141,6 +141,7 @@ export function History({ onNavigate }: { onNavigate: Navigate }) {
         loading={history.isPending}
         error={error || (history.isError ? history.error.message : undefined)}
         empty={showTrash ? t('history.trashEmpty') : t('chat.historyEmpty')}
+        onRowClick={(row) => !showTrash && onNavigate('chat', { conversationId: row.id })}
         trash={{ showing: showTrash, onToggle: setShowTrash }}
         actions={
           <button className="primary" disabled={showTrash} onClick={() => onNavigate('chat')}>

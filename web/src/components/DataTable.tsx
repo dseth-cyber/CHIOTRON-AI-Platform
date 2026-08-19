@@ -19,12 +19,7 @@ type Sort = { key: string; direction: 'asc' | 'desc' };
 const PAGE_SIZES = [10, 20, 50, 100];
 
 /**
- * The shared table: loading, sorting, column selection and pagination.
- *
- * ARCHITECTURE-v1 section 10 requires every table to behave the same way. Doing
- * it once means a user learns the behaviour on one page and keeps it on the
- * next, and it stops each page inventing its own idea of what an empty result or
- * a loading state looks like.
+ * The shared table: loading, sorting, column selection, row clicking and pagination.
  */
 export function DataTable<Row>({
   columns,
@@ -35,6 +30,7 @@ export function DataTable<Row>({
   empty,
   actions,
   trash,
+  onRowClick,
 }: {
   columns: Column<Row>[];
   rows: Row[];
@@ -43,8 +39,8 @@ export function DataTable<Row>({
   error?: string;
   empty?: ReactNode;
   actions?: ReactNode;
-  /** Present when the caller has a trash view to toggle into (section 43). */
   trash?: { showing: boolean; onToggle: (showing: boolean) => void; count?: number };
+  onRowClick?: (row: Row) => void;
 }) {
   const { t, formatNumber } = useTranslation();
   const [sort, setSort] = useState<Sort | null>(null);
@@ -71,7 +67,6 @@ export function DataTable<Row>({
   }, [rows, sort, columns]);
 
   const pageCount = Math.max(1, Math.ceil(sorted.length / pageSize));
-  // A page that no longer exists after a filter would render blank, so clamp.
   const current = Math.min(page, pageCount - 1);
   const from = current * pageSize;
   const visibleRows = sorted.slice(from, from + pageSize);
@@ -178,7 +173,17 @@ export function DataTable<Row>({
             )}
             {!loading &&
               visibleRows.map((row) => (
-                <tr key={rowKey(row)}>
+                <tr
+                  key={rowKey(row)}
+                  className={onRowClick ? 'clickable-row' : ''}
+                  onClick={(e) => {
+                    const target = e.target as HTMLElement;
+                    if (target.closest('button') || target.closest('a') || target.closest('input')) {
+                      return;
+                    }
+                    onRowClick?.(row);
+                  }}
+                >
                   {shown.map((column) => (
                     <td key={column.key} className={column.align === 'end' ? 'end' : ''}>
                       {column.cell(row)}

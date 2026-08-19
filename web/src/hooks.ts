@@ -183,12 +183,14 @@ export function useToggleFavorite(): (
   marked: boolean,
 ) => Promise<void> {
   const queryClient = useQueryClient();
+  const [credential] = useCredential();
   return useCallback(
     async (kind, targetId, marked) => {
       await setFavorite(kind, targetId, marked);
       await queryClient.invalidateQueries({ queryKey: ['favorites'] });
+      await queryClient.refetchQueries({ queryKey: ['favorites', credential] });
     },
-    [queryClient],
+    [queryClient, credential],
   );
 }
 

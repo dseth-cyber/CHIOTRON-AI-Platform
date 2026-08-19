@@ -247,16 +247,24 @@ export class ApiError extends Error {
 }
 
 export function readCredential(): string {
-  return sessionStorage.getItem(CREDENTIAL_KEY) ?? '';
+  try {
+    return localStorage.getItem(CREDENTIAL_KEY) ?? sessionStorage.getItem(CREDENTIAL_KEY) ?? '';
+  } catch {
+    return '';
+  }
 }
 
 export function writeCredential(key: string): void {
   const trimmed = key.trim();
-  if (trimmed === '') {
-    sessionStorage.removeItem(CREDENTIAL_KEY);
-    return;
-  }
-  sessionStorage.setItem(CREDENTIAL_KEY, trimmed);
+  try {
+    if (trimmed === '') {
+      localStorage.removeItem(CREDENTIAL_KEY);
+      sessionStorage.removeItem(CREDENTIAL_KEY);
+      return;
+    }
+    localStorage.setItem(CREDENTIAL_KEY, trimmed);
+    sessionStorage.setItem(CREDENTIAL_KEY, trimmed);
+  } catch {}
 }
 
 function headers(): HeadersInit {
