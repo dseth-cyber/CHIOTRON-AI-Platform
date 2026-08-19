@@ -12,7 +12,7 @@ import {
   useRefreshSettings,
   useScopes,
 } from '../hooks';
-import { ThemeSwitcher } from '../components/ThemeSwitcher';
+import { useTheme } from '@/contexts/ThemeContext';
 import { useTranslation } from '../LanguageContext';
 import { LANGUAGES, LANGUAGE_NAMES, type Language, type TranslationKey } from '../i18n';
 import { classificationTone, statusTone, toneFor } from '../theme';
@@ -34,6 +34,7 @@ const ALL_SCOPES = [
 
 export function Settings({ onConnect }: { onConnect: () => void }) {
   const { t, language, setLanguage, formatNumber } = useTranslation();
+  const { theme, setTheme } = useTheme();
   const [credential] = useCredential();
   const identity = useIdentity();
   const platform = usePlatform();
@@ -84,8 +85,40 @@ export function Settings({ onConnect }: { onConnect: () => void }) {
         <section className="panel" style={{ gridColumn: '1 / -1' }}>
           <span className="panel-label">Theme / ธีมระบบ</span>
           <p className="history-hint">เลือกรูปแบบการแสดงผลของหน้าจอ (Modern Glassmorphism, Dark, Light) เพื่อประสบการณ์การใช้งานที่ดีที่สุด</p>
-          <div className="mt-3">
-            <ThemeSwitcher />
+          <div className="theme-card-grid">
+            <button
+              type="button"
+              className={`theme-select-card ${theme === 'glassmorphism' ? 'active' : ''}`}
+              onClick={() => setTheme('glassmorphism')}
+            >
+              <span className="theme-select-icon">🔮</span>
+              <div>
+                <strong>Modern Glassmorphism</strong>
+                <small>กระจกโปร่งแสง ไล่เฉดสีม่วงนีออน (แนะนำ)</small>
+              </div>
+            </button>
+            <button
+              type="button"
+              className={`theme-select-card ${theme === 'dark' ? 'active' : ''}`}
+              onClick={() => setTheme('dark')}
+            >
+              <span className="theme-select-icon">🌙</span>
+              <div>
+                <strong>Dark (CHIOTRON)</strong>
+                <small>ธีมมืดดั้งเดิม น้ำเงินกรมท่า คลาสสิก</small>
+              </div>
+            </button>
+            <button
+              type="button"
+              className={`theme-select-card ${theme === 'light' ? 'active' : ''}`}
+              onClick={() => setTheme('light')}
+            >
+              <span className="theme-select-icon">☀️</span>
+              <div>
+                <strong>Light</strong>
+                <small>ธีมสว่าง สะอาด เรียบง่าย</small>
+              </div>
+            </button>
           </div>
         </section>
 

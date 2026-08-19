@@ -34,27 +34,27 @@ export const themes: Record<ThemeMode, ThemeConfig> = {
     mode: 'glassmorphism',
     text: {
       primary: 'text-white',
-      secondary: 'text-purple-200/90',
+      secondary: 'text-slate-300',
     },
-    card: 'bg-[#3b1768]/45 backdrop-blur-2xl border border-purple-300/30 shadow-2xl shadow-purple-950/40',
-    cardBorder: 'border-purple-300/35',
-    navBar: 'bg-[#2a1052]/70 backdrop-blur-2xl border-b border-purple-400/25',
-    navBorder: 'border-purple-400/25',
-    sidebar: 'bg-[#1c0838]/80 backdrop-blur-2xl border-r border-purple-400/25',
-    sidebarBorder: 'border-purple-400/25',
-    inputBg: 'bg-purple-800/35 backdrop-blur-md',
-    inputBorder: 'border-purple-300/40 focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/60',
-    border: 'border-purple-400/25',
-    tableHeader: 'bg-purple-800/40 backdrop-blur-md',
-    tableRow: 'hover:bg-purple-700/35 transition-colors',
-    tableBorder: 'border-purple-400/25',
-    tableDivide: 'divide-purple-400/25',
+    card: 'bg-white/[0.04] backdrop-blur-2xl border border-white/[0.09] shadow-2xl shadow-black/30',
+    cardBorder: 'border-white/[0.09]',
+    navBar: 'bg-[#120a24]/60 backdrop-blur-2xl border-b border-white/[0.08]',
+    navBorder: 'border-white/[0.08]',
+    sidebar: 'bg-[#120a24]/70 backdrop-blur-2xl border-r border-white/[0.08]',
+    sidebarBorder: 'border-white/[0.08]',
+    inputBg: 'bg-white/[0.06] backdrop-blur-md',
+    inputBorder: 'border-white/[0.12] focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/50',
+    border: 'border-white/[0.08]',
+    tableHeader: 'bg-white/[0.06] backdrop-blur-md',
+    tableRow: 'hover:bg-white/[0.06] transition-colors',
+    tableBorder: 'border-white/[0.08]',
+    tableDivide: 'divide-white/[0.08]',
     primary: 'text-cyan-400',
     primaryHover: 'text-cyan-300',
-    buttonGradient: 'bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-600 shadow-lg shadow-cyan-500/25',
-    progressTrack: 'bg-purple-900/60',
-    glowColor: 'from-cyan-400 via-purple-300 to-pink-400',
-    background: 'bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-purple-800/80 via-[#2e1065] to-[#1a063b] text-white min-h-screen',
+    buttonGradient: 'bg-gradient-to-r from-cyan-400 to-blue-600 shadow-lg shadow-cyan-500/30',
+    progressTrack: 'bg-white/[0.08]',
+    glowColor: 'from-cyan-400 via-sky-300 to-blue-500',
+    background: 'bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-purple-900/80 via-[#1a0b36] to-[#0d041c] text-white min-h-screen',
   },
   dark: {
     mode: 'dark',
@@ -127,7 +127,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     if (saved === 'glassmorphism' || saved === 'dark' || saved === 'light') {
       return saved;
     }
-    return 'dark'; // Dark theme matches the user's CHIOTRON baseline screenshot
+    return 'glassmorphism'; // Modern Glassmorphism is default
   });
 
   const setTheme = (newTheme: ThemeMode) => {
@@ -138,7 +138,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const toggleTheme = () => {
     setThemeState((prev) => {
       const next: ThemeMode =
-        prev === 'dark' ? 'glassmorphism' : prev === 'glassmorphism' ? 'light' : 'dark';
+        prev === 'glassmorphism' ? 'dark' : prev === 'dark' ? 'light' : 'glassmorphism';
       localStorage.setItem(STORAGE_KEY, next);
       return next;
     });
@@ -168,8 +168,8 @@ export function useTheme(): ThemeContextType {
   const context = useContext(ThemeContext);
   if (!context) {
     return {
-      theme: 'dark',
-      themeConfig: themes.dark,
+      theme: 'glassmorphism',
+      themeConfig: themes.glassmorphism,
       setTheme: () => {},
       toggleTheme: () => {},
     };

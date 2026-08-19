@@ -4,19 +4,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import './styles.css';
 import { Modal } from './Modal';
 import { ChatWorkspace } from './Chat';
-import {
-  ConnectDialog,
-  ConnectionBadge,
-  SCOPE_ASSISTANTS_READ,
-  SCOPE_CHAT,
-  SCOPE_KNOWLEDGE_READ,
-  SCOPE_ADMIN_KEYS,
-} from './Connection';
+import { ConnectDialog, ConnectionBadge } from './Connection';
 import { LanguageProvider, LanguageSwitcher, useTranslation } from './LanguageContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { ThemeSwitcher } from './components/ThemeSwitcher';
 import type { TranslationKey } from './i18n';
-import { useComputeHealth, useCredential, useModels, usePlatform, useScopes } from './hooks';
+import { useComputeHealth, useCredential, useModels, usePlatform } from './hooks';
 import { installTheme } from './theme';
 import type { ChatTarget, Navigate, View } from './navigation';
 import { Home } from './pages/Home';
@@ -72,14 +65,7 @@ const MODULE_TAGS: Record<(typeof MODULE_KEYS)[number], string> = {
   api: 'API', module: 'MOD', event: 'EVT', map: 'MAP', flags: 'FLG', prompts: 'PRM',
 };
 
-/**
- * The navigation, grouped the way section 10 lists the portal's pages.
- *
- * `scopes` is what the connected key must hold for the item to be usable. This
- * is convenience only: the backend authorizes every request regardless of what
- * the portal chose to show (ARCHITECTURE-v1 section 5).
- */
-type NavItem = { view: View; mark: string; label: TranslationKey; scopes?: string[]; reason?: TranslationKey };
+type NavItem = { view: View; mark: string; label: TranslationKey };
 type NavGroup = { label: TranslationKey; items: NavItem[] };
 
 const NAV_GROUPS: NavGroup[] = [
@@ -87,20 +73,20 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'nav.group.workspace',
     items: [
       { view: 'home', mark: 'HM', label: 'nav.home' },
-      { view: 'chat', mark: 'NC', label: 'nav.newChat', scopes: [SCOPE_CHAT, SCOPE_ASSISTANTS_READ], reason: 'nav.chatDisabled' },
-      { view: 'analyze', mark: 'AN', label: 'nav.analyze', scopes: [SCOPE_CHAT], reason: 'nav.historyDisabled' },
-      { view: 'create', mark: 'CR', label: 'nav.create', scopes: [SCOPE_CHAT], reason: 'nav.historyDisabled' },
-      { view: 'history', mark: 'HI', label: 'nav.history', scopes: [SCOPE_CHAT], reason: 'nav.historyDisabled' },
-      { view: 'assistants', mark: 'AS', label: 'nav.assistants', scopes: [SCOPE_ASSISTANTS_READ], reason: 'nav.assistantsDisabled' },
-      { view: 'favorites', mark: 'FV', label: 'nav.favorites', scopes: [SCOPE_CHAT], reason: 'nav.historyDisabled' },
+      { view: 'chat', mark: 'NC', label: 'nav.newChat' },
+      { view: 'analyze', mark: 'AN', label: 'nav.analyze' },
+      { view: 'create', mark: 'CR', label: 'nav.create' },
+      { view: 'history', mark: 'HI', label: 'nav.history' },
+      { view: 'assistants', mark: 'AS', label: 'nav.assistants' },
+      { view: 'favorites', mark: 'FV', label: 'nav.favorites' },
       { view: 'shared', mark: 'SH', label: 'nav.shared' },
     ],
   },
   {
     label: 'nav.group.knowledge',
     items: [
-      { view: 'documents', mark: 'DC', label: 'nav.documents', scopes: [SCOPE_KNOWLEDGE_READ], reason: 'nav.knowledgeDisabled' },
-      { view: 'search', mark: 'SR', label: 'nav.search', scopes: [SCOPE_KNOWLEDGE_READ], reason: 'nav.knowledgeDisabled' },
+      { view: 'documents', mark: 'DC', label: 'nav.documents' },
+      { view: 'search', mark: 'SR', label: 'nav.search' },
     ],
   },
   {
@@ -108,7 +94,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { view: 'portal', mark: 'DP', label: 'nav.developerPortal' },
       { view: 'roadmap', mark: 'RM', label: 'nav.roadmap' },
-      { view: 'providers', mark: 'PV', label: 'nav.providers', scopes: [SCOPE_ADMIN_KEYS], reason: 'nav.providersDisabled' },
+      { view: 'providers', mark: 'PV', label: 'nav.providers' },
       { view: 'settings', mark: 'ST', label: 'nav.settings' },
     ],
   },
@@ -118,12 +104,12 @@ function App() {
   const { t } = useTranslation();
   const [view, setView] = useState<View>('home');
   const [chatTarget, setChatTarget] = useState<ChatTarget | null>(null);
+  const [collapsed, setCollapsed] = useState(false);
   const [phases, setPhases] = useState(initialPhases);
   const [expanded, setExpanded] = useState<number | null>(1);
   const [showAdd, setShowAdd] = useState(false);
   const [showConnect, setShowConnect] = useState(false);
   const [showUpdate, setShowUpdate] = useState<number | null>(null);
-  const { has } = useScopes();
 
   const overview = useMemo<Overview>(() => {
     const total = phases.reduce((sum, phase) => sum + phase.total, 0);
@@ -141,35 +127,74 @@ function App() {
     setView(next);
   };
 
-  const allowed = (item: NavItem) => (item.scopes ?? []).every((scope) => has(scope));
   // The governance detail pages are opened from the Developer Portal, so that
   // nav entry has to stay lit while one of them is on screen.
   const isActive = (item: NavItem) =>
     item.view === view || (item.view === 'portal' && (view === 'rules' || view === 'architecture'));
 
   return (
-    <div className="app-shell">
-      <aside className="sidebar">
-        <div className="brand"><span className="brand-mark">C</span><span>CHIOTRON</span></div>
+    <div className={`app-shell ${collapsed ? 'sidebar-collapsed' : ''}`}>
+      <aside className={`sidebar ${collapsed ? 'collapsed' : ''}`}>
+        <div className="brand">
+          <div
+            className="brand-title"
+            onClick={() => {
+              if (collapsed) {
+                setCollapsed(false);
+              } else {
+                navigate('home');
+              }
+            }}
+            title={collapsed ? "คลิกเพื่อขยายเมนู (Click to expand)" : "หน้าแรก (Home)"}
+            style={{ cursor: 'pointer' }}
+          >
+            <span className="brand-mark">C</span>
+            {!collapsed && <span className="brand-text">CHIOTRON</span>}
+          </div>
+          {!collapsed && (
+            <div className="sidebar-header-actions">
+              <button
+                type="button"
+                className="sidebar-icon-btn"
+                onClick={() => navigate('search')}
+                title={t('nav.search')}
+                aria-label={t('nav.search')}
+              >
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="11" cy="11" r="8" />
+                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                className="sidebar-icon-btn"
+                onClick={() => setCollapsed(true)}
+                title="ยุบเมนู (Collapse)"
+                aria-label="Collapse Sidebar"
+              >
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                  <line x1="9" y1="3" x2="9" y2="21" />
+                </svg>
+              </button>
+            </div>
+          )}
+        </div>
         {NAV_GROUPS.map((group) => (
           <div className="nav-group" key={group.label}>
-            <p className="workspace-label">{t(group.label)}</p>
+            {!collapsed && <p className="workspace-label">{t(group.label)}</p>}
             <nav className="side-nav" aria-label={t(group.label)}>
-              {group.items.map((item) => {
-                const usable = allowed(item);
-                return (
-                  <button
-                    key={item.view}
-                    className={isActive(item) ? 'nav-item active' : usable ? 'nav-item' : 'nav-item muted'}
-                    onClick={() => usable && navigate(item.view)}
-                    disabled={!usable}
-                    title={usable ? undefined : item.reason ? t(item.reason) : undefined}
-                  >
-                    <span>{item.mark}</span>
-                    {t(item.label)}
-                  </button>
-                );
-              })}
+              {group.items.map((item) => (
+                <button
+                  key={item.view}
+                  className={isActive(item) ? 'nav-item active' : 'nav-item'}
+                  onClick={() => navigate(item.view)}
+                  title={t(item.label)}
+                >
+                  <span className="nav-item-mark">{item.mark}</span>
+                  {!collapsed && <span className="nav-item-text">{t(item.label)}</span>}
+                </button>
+              ))}
             </nav>
           </div>
         ))}
