@@ -64,6 +64,8 @@ type Deps struct {
 	Knowledge     Knowledge
 	Agent         Agent
 	Favorites     FavoriteStore
+	Settings      SettingsAdmin
+	Prompts       PromptAdmin
 	// Providers is the model-routing registry. ReloadCompute applies a change to
 	// the running process, and CredentialStorage reports whether a provider
 	// credential can be stored at all, so the UI can say why not.
@@ -176,6 +178,8 @@ func NewRouter(d Deps) http.Handler {
 	registerFavorites(mux, d)
 	registerProviders(mux, d)
 	registerAdmin(mux, d)
+	registerSettings(mux, d)
+	registerPrompts(mux, d)
 
 	// Ordering matters, outermost first:
 	//   recoverPanic  - nothing below it can take the process down

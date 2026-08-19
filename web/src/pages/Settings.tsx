@@ -1,10 +1,23 @@
+import { useState } from 'react';
 import { Tag } from '../components/EmptyState';
 import { SearchableSelect } from '../components/SearchableSelect';
-import { useComputeHealth, useCredential, useIdentity, useModels, usePlatform, useScopes } from '../hooks';
+import {
+  useComputeHealth,
+  useCredential,
+  useIdentity,
+  useModels,
+  usePlatform,
+  usePlatformSettings,
+  usePromptTemplates,
+  useRefreshSettings,
+  useScopes,
+} from '../hooks';
+import { ThemeSwitcher } from '../components/ThemeSwitcher';
 import { useTranslation } from '../LanguageContext';
 import { LANGUAGES, LANGUAGE_NAMES, type Language, type TranslationKey } from '../i18n';
 import { classificationTone, statusTone, toneFor } from '../theme';
-import { SCOPE_MODELS_READ } from '../Connection';
+import { SCOPE_ADMIN_KEYS, SCOPE_MODELS_READ } from '../Connection';
+import { updatePlatformSetting } from '../api';
 
 /** Every scope the platform defines, so a key can be read against the whole list. */
 const ALL_SCOPES = [
@@ -19,21 +32,46 @@ const ALL_SCOPES = [
   'admin:assistants',
 ] as const;
 
-/**
- * Language, credential and what this browser is actually talking to.
- *
- * The scope table lists every scope the platform defines rather than only the
- * ones this key holds: "you do not have this" is the answer somebody comes to
- * this page for, and a list of what you do have cannot give it.
- */
 export function Settings({ onConnect }: { onConnect: () => void }) {
   const { t, language, setLanguage, formatNumber } = useTranslation();
   const [credential] = useCredential();
   const identity = useIdentity();
   const platform = usePlatform();
   const { has } = useScopes();
+  const canAdmin = has(SCOPE_ADMIN_KEYS);
   const models = useModels(has(SCOPE_MODELS_READ));
   const compute = useComputeHealth(credential !== '');
+  const settingsQuery = usePlatformSettings(canAdmin);
+  const promptsQuery = usePromptTemplates(credential !== '');
+  const refreshSettings = useRefreshSettings();
+
+  const [editingKey, setEditingKey] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState<string>('');
+  const [saveBusy, setSaveBusy] = useState<boolean>(false);
+
+  const handleStartEdit = (key: string, currentValue: string) => {
+    setEditingKey(key);
+    setEditValue(currentValue);
+  };
+
+  const handleSaveSetting = async (key: string, description: string) => {
+    setSaveBusy(true);
+    try {
+      let parsedValue: any = editValue;
+      try {
+        parsedValue = JSON.parse(editValue);
+      } catch {
+        // If not valid JSON, pass as string
+      }
+      await updatePlatformSetting(key, parsedValue, description);
+      refreshSettings();
+      setEditingKey(null);
+    } catch (err) {
+      console.error('Failed to update setting', err);
+    } finally {
+      setSaveBusy(false);
+    }
+  };
 
   return (
     <>
@@ -43,6 +81,14 @@ export function Settings({ onConnect }: { onConnect: () => void }) {
       </section>
 
       <section className="settings-grid">
+        <section className="panel" style={{ gridColumn: '1 / -1' }}>
+          <span className="panel-label">Theme / ธีมระบบ</span>
+          <p className="history-hint">เลือกรูปแบบการแสดงผลของหน้าจอ (Modern Glassmorphism, Dark, Light) เพื่อประสบการณ์การใช้งานที่ดีที่สุด</p>
+          <div className="mt-3">
+            <ThemeSwitcher />
+          </div>
+        </section>
+
         <section className="panel">
           <span className="panel-label">{t('settings.language')}</span>
           <p className="history-hint">{t('settings.language.body')}</p>
@@ -117,6 +163,117 @@ export function Settings({ onConnect }: { onConnect: () => void }) {
           </dl>
         </section>
       </section>
+
+      {canAdmin && (
+        <section className="panel">
+          <span className="panel-label">{t('settings.platformSettings')}</span>
+          <p className="history-hint">{t('settings.platformSettings.body')}</p>
+          {settingsQuery.isLoading ? (
+            <p className="history-hint">{t('table.loading')}</p>
+          ) : (settingsQuery.data ?? []).length === 0 ? (
+            <p className="history-hint">{t('settings.empty')}</p>
+          ) : (
+            <div className="table-wrap">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>{t('settings.column.key')}</th>
+                    <th>{t('settings.column.value')}</th>
+                    <th>{t('settings.column.description')}</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(settingsQuery.data ?? []).map((setting) => (
+                    <tr key={setting.key}>
+                      <td><code>{setting.key}</code></td>
+                      <td>
+                        {editingKey === setting.key ? (
+                          <input
+                            type="text"
+                            className="input-text"
+                            value={editValue}
+                            onChange={(e) => setEditValue(e.target.value)}
+                            disabled={saveBusy}
+                          />
+                        ) : (
+                          <code>{setting.value}</code>
+                        )}
+                      </td>
+                      <td><small>{setting.description}</small></td>
+                      <td style={{ textAlign: 'right' }}>
+                        {editingKey === setting.key ? (
+                          <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                            <button
+                              className="primary"
+                              onClick={() => handleSaveSetting(setting.key, setting.description)}
+                              disabled={saveBusy}
+                            >
+                              {t('settings.save')}
+                            </button>
+                            <button
+                              className="secondary"
+                              onClick={() => setEditingKey(null)}
+                              disabled={saveBusy}
+                            >
+                              {t('action.cancel')}
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            className="secondary"
+                            onClick={() => handleStartEdit(setting.key, setting.value)}
+                          >
+                            {t('settings.edit')}
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      )}
+
+      {credential !== '' && (
+        <section className="panel">
+          <span className="panel-label">{t('settings.promptTemplates')}</span>
+          <p className="history-hint">{t('settings.promptTemplates.body')}</p>
+          {promptsQuery.isLoading ? (
+            <p className="history-hint">{t('table.loading')}</p>
+          ) : (promptsQuery.data ?? []).length === 0 ? (
+            <p className="history-hint">{t('settings.emptyPrompts')}</p>
+          ) : (
+            <div className="table-wrap">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>{t('settings.column.name')}</th>
+                    <th>{t('settings.column.slug')}</th>
+                    <th>{t('settings.column.template')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(promptsQuery.data ?? []).map((tpl) => (
+                    <tr key={tpl.id}>
+                      <td>
+                        <span className="cell-stack">
+                          <b>{tpl.name}</b>
+                          <small>{tpl.description}</small>
+                        </span>
+                      </td>
+                      <td><code>{tpl.slug}</code></td>
+                      <td><small style={{ whiteSpace: 'pre-wrap' }}>{tpl.template}</small></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      )}
 
       <section className="panel">
         <span className="panel-label">{t('settings.scopes')}</span>

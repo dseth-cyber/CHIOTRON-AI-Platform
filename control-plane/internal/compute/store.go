@@ -39,14 +39,18 @@ const (
 	KindOllama = "ollama"
 	KindOpenAI = "openai-compatible"
 	KindClaude = "anthropic"
+	KindVLLM   = "vllm"
+	KindNIM    = "nvidia-nim"
 )
 
-var Kinds = []string{KindOllama, KindOpenAI, KindClaude}
+var Kinds = []string{KindOllama, KindOpenAI, KindClaude, KindVLLM, KindNIM}
 
 // NeedsCredential reports whether a kind is useless without an API key. A local
-// Ollama needs none, which is what lets a development deployment run with no
+// Ollama or private vLLM needs none, which is what lets a development deployment run with no
 // encryption key configured at all.
-func NeedsCredential(kind string) bool { return kind == KindOpenAI || kind == KindClaude }
+func NeedsCredential(kind string) bool {
+	return kind == KindOpenAI || kind == KindClaude || kind == KindNIM
+}
 
 // Provider is one configured model backend.
 //
@@ -434,7 +438,7 @@ func (s *Store) Adapter(ctx context.Context, record Provider) (provider.LLM, err
 	switch record.Kind {
 	case KindOllama:
 		return ollama.New(record.BaseURL, timeout), nil
-	case KindOpenAI:
+	case KindOpenAI, KindVLLM, KindNIM:
 		return openai.New(record.Slug, record.BaseURL, credential, timeout), nil
 	case KindClaude:
 		return anthropic.New(record.Slug, record.BaseURL, credential, timeout), nil

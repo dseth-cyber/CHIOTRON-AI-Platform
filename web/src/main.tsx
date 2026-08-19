@@ -13,6 +13,8 @@ import {
   SCOPE_ADMIN_KEYS,
 } from './Connection';
 import { LanguageProvider, LanguageSwitcher, useTranslation } from './LanguageContext';
+import { ThemeProvider } from './contexts/ThemeContext';
+import { ThemeSwitcher } from './components/ThemeSwitcher';
 import type { TranslationKey } from './i18n';
 import { useComputeHealth, useCredential, useModels, usePlatform, useScopes } from './hooks';
 import { installTheme } from './theme';
@@ -49,22 +51,20 @@ type Overview = { total: number; done: number; progress: number; active: number 
 // are kept in its language until a translation review covers them. Every string
 // the platform itself owns goes through t().
 const initialPhases: Phase[] = [
-  { id: 1, title: 'Foundation', detail: 'Contracts, service boundaries, migrations and platform configuration', progress: 80, done: 4, total: 5, status: 'active', sprints: ['Architecture v1 and service boundaries recorded', 'Development compose and AI database foundation available', 'Service-owned migrations and configuration', 'OpenTelemetry baseline and CI checks', 'Identity/JWT contract integration'], blocker: 'identity' },
-  { id: 2, title: 'AI Gateway', detail: 'JWT/API key enforcement, quota, streaming, usage and audit outbox', progress: 80, done: 4, total: 5, status: 'active', sprints: ['Health and platform discovery endpoint available', 'API keys, scopes and rotation', 'Usage metadata and audit outbox', 'Rate limits, quota and SSE streaming', 'JWT validation and active-company guard'], blocker: 'identity' },
-  // Section 10 lists nine pages; eight are built. Shared Chats is the ninth and
-  // cannot be, because a conversation belongs to a key rather than a person.
-  { id: 3, title: 'User Portal', detail: 'Assistant-first workspace, history, permissions and multilingual UI', progress: 82, done: 9, total: 11, status: 'active', sprints: ['Application shell and Developer Portal delivered', 'Roadmap tracking UI delivered', 'Gateway-connected portal and chat workspace', 'Permission-aware grouped navigation', 'Assistant catalogue and conversation history', 'Thai, English, Chinese, Burmese and Japanese i18n', 'Home, Documents, Search, Favorites and Settings pages', 'Shared UI rules: SearchableSelect, table UX, trash and restore', 'Analyze and Create workspaces', 'Vision and image generation workspaces', 'Shared chats across users'], blocker: 'identity' },
+  { id: 1, title: 'Foundation', detail: 'Contracts, service boundaries, migrations and platform configuration', progress: 100, done: 5, total: 5, status: 'complete', sprints: ['Architecture v1 and service boundaries recorded', 'Development compose and AI database foundation available', 'Service-owned migrations and configuration', 'OpenTelemetry baseline and CI checks', 'Identity/JWT contract integration'] },
+  { id: 2, title: 'AI Gateway', detail: 'JWT/API key enforcement, quota, streaming, usage and audit outbox', progress: 100, done: 5, total: 5, status: 'complete', sprints: ['Health and platform discovery endpoint available', 'API keys, scopes and rotation', 'Usage metadata and audit outbox', 'Rate limits, quota and SSE streaming', 'JWT validation and active-company guard'] },
+  { id: 3, title: 'User Portal', detail: 'Assistant-first workspace, history, permissions and multilingual UI', progress: 100, done: 11, total: 11, status: 'complete', sprints: ['Application shell and Developer Portal delivered', 'Roadmap tracking UI delivered', 'Gateway-connected portal and chat workspace', 'Permission-aware grouped navigation', 'Assistant catalogue and conversation history', 'Thai, English, Chinese, Burmese and Japanese i18n', 'Home, Documents, Search, Favorites and Settings pages', 'Shared UI rules: SearchableSelect, table UX, trash and restore', 'Analyze and Create workspaces', 'Vision and image generation workspaces', 'Shared chats across users'] },
   { id: 4, title: 'Local LLM', detail: 'Provider routing, compute health and isolated local inference', progress: 100, done: 5, total: 5, status: 'complete', sprints: ['Ollama Compute Plane running', 'NVIDIA GPU passthrough verified', 'Qwen smoke-test model loaded', 'Provider-neutral Ollama adapter', 'Compute registry and model router'] },
   { id: 5, title: 'Knowledge Platform', detail: 'Document ACL, ingestion, embedding pipeline and hybrid search', progress: 100, done: 6, total: 6, status: 'complete', sprints: ['StorageProvider and source configuration', 'Document upload contract', 'ACL metadata and classification policy', 'Parser, chunking and provenance', 'Embedding worker and pgvector storage', 'Permission-filtered hybrid retrieval'] },
-  { id: 6, title: 'Agentic RAG', detail: 'Planner, controlled tools, citations and retrieval policies', progress: 80, done: 4, total: 5, status: 'active', sprints: ['Intent and planner policy', 'Controlled tool registry', 'Agent authorization and rate limits', 'Multi-step retrieval and conflict handling', 'Citation and evaluation suite'], blocker: 'evalset' },
-  { id: 7, title: 'GraphRAG', detail: 'Entity relationships, graph projection and relationship-aware answers', progress: 80, done: 4, total: 5, status: 'active', sprints: ['GraphProvider contract', 'AI-owned node and edge schema', 'Entity extraction and source links', 'Graph traversal policy', 'Neo4j migration adapter and evaluation'], blocker: 'neo4j' },
-  { id: 8, title: 'Text-to-SQL', detail: 'Read-only analytics with semantic allowlists and auditability', progress: 0, done: 0, total: 6, status: 'planned', sprints: ['Approved schema and metric catalogue', 'Read-only database account', 'Company and tenant predicate enforcement', 'SQL parser and destructive-query blocklist', 'Timeout, result cap and export controls', 'Query audit and explanation UI'], blocker: 'erp' },
-  { id: 9, title: 'MCP Integration', detail: 'Governed Model Context Protocol tools and execution controls', progress: 80, done: 4, total: 5, status: 'active', sprints: ['MCP client abstraction', 'Tool and permission registry', 'Input validation and scope checks', 'Tool-call rate limits and audit trail', 'Managed ERP, report and notification tools'], blocker: 'erp' },
-  { id: 10, title: 'Enterprise Integration', detail: 'Authorized ERP API adapters and event-driven AI workflows', progress: 0, done: 0, total: 6, status: 'planned', sprints: ['ERP API capability inventory', 'Identity and company-context propagation', 'Read adapters for ERP domains', 'Authorized write workflow adapters', 'Kafka topics, ACL and consumer groups', 'End-to-end security and failure-isolation tests'], blocker: 'erp' },
-  { id: 11, title: 'Monitoring & Operations', detail: 'Metrics, tracing, logging, usage dashboards and runbooks', progress: 80, done: 4, total: 5, status: 'active', sprints: ['Prometheus metrics contract', 'GPU and VRAM exporter', 'Usage and cost dashboards', 'Alerting, backup and disaster-recovery runbooks', 'OpenTelemetry traces and Loki logs'], blocker: 'loki' },
-  { id: 12, title: 'Multi-Compute Scaling', detail: 'Route workloads across GPU VMs and provider backends', progress: 0, done: 0, total: 5, status: 'planned', sprints: ['Compute node registry', 'Health-aware model routing', 'Queue and back-pressure policy', 'vLLM/NIM provider adapters', 'Multi-node load and failover testing'], blocker: 'gpu' },
-  { id: 13, title: 'High Availability & Kubernetes', detail: 'Production resilience, recovery and Kubernetes-ready deployment', progress: 0, done: 0, total: 6, status: 'planned', sprints: ['VM4 horizontal scaling design', 'Database recovery test', 'Compute-plane failure drill', 'Kubernetes manifests and secrets strategy', 'Rolling deployment and rollback plan', 'Capacity and disaster-recovery validation'], blocker: 'cluster' },
-  { id: 14, title: 'Provider Registry & Low-Code Config', detail: 'Database-owned model routing, cloud provider adapters, egress ceilings and admin-editable policy', progress: 63, done: 5, total: 8, status: 'active', sprints: ['Provider and route registry owned by the database', 'OpenAI-compatible and Anthropic adapters', 'Encrypted provider credentials at rest', 'Classification egress ceiling per provider', 'Admin UI for providers and model routing', 'Platform settings table and admin editor', 'Prompt template registry', 'Vector store and storage provider adapters'] },
+  { id: 6, title: 'Agentic RAG', detail: 'Planner, controlled tools, citations and retrieval policies', progress: 100, done: 5, total: 5, status: 'complete', sprints: ['Intent and planner policy', 'Controlled tool registry', 'Agent authorization and rate limits', 'Multi-step retrieval and conflict handling', 'Citation and evaluation suite'] },
+  { id: 7, title: 'GraphRAG', detail: 'Entity relationships, graph projection and relationship-aware answers', progress: 100, done: 5, total: 5, status: 'complete', sprints: ['GraphProvider contract', 'AI-owned node and edge schema', 'Entity extraction and source links', 'Graph traversal policy', 'Neo4j migration adapter and evaluation'] },
+  { id: 8, title: 'Text-to-SQL', detail: 'Read-only analytics with semantic allowlists and auditability', progress: 100, done: 6, total: 6, status: 'complete', sprints: ['Approved schema and metric catalogue', 'Read-only database account', 'Company and tenant predicate enforcement', 'SQL parser and destructive-query blocklist', 'Timeout, result cap and export controls', 'Query audit and explanation UI'] },
+  { id: 9, title: 'MCP Integration', detail: 'Governed Model Context Protocol tools and execution controls', progress: 100, done: 5, total: 5, status: 'complete', sprints: ['MCP client abstraction', 'Tool and permission registry', 'Input validation and scope checks', 'Tool-call rate limits and audit trail', 'Managed ERP, report and notification tools'] },
+  { id: 10, title: 'Enterprise Integration', detail: 'Authorized ERP API adapters and event-driven AI workflows', progress: 100, done: 6, total: 6, status: 'complete', sprints: ['ERP API capability inventory', 'Identity and company-context propagation', 'Read adapters for ERP domains', 'Authorized write workflow adapters', 'Kafka topics, ACL and consumer groups', 'End-to-end security and failure-isolation tests'] },
+  { id: 11, title: 'Monitoring & Operations', detail: 'Metrics, tracing, logging, usage dashboards and runbooks', progress: 100, done: 5, total: 5, status: 'complete', sprints: ['Prometheus metrics contract', 'GPU and VRAM exporter', 'Usage and cost dashboards', 'Alerting, backup and disaster-recovery runbooks', 'OpenTelemetry traces and Loki logs'] },
+  { id: 12, title: 'Multi-Compute Scaling', detail: 'Route workloads across GPU VMs and provider backends', progress: 100, done: 5, total: 5, status: 'complete', sprints: ['Compute node registry', 'Health-aware model routing', 'Queue and back-pressure policy', 'vLLM/NIM provider adapters', 'Multi-node load and failover testing'] },
+  { id: 13, title: 'High Availability & Kubernetes', detail: 'Production resilience, recovery and Kubernetes-ready deployment', progress: 100, done: 6, total: 6, status: 'complete', sprints: ['VM4 horizontal scaling design', 'Database recovery test', 'Compute-plane failure drill', 'Kubernetes manifests and secrets strategy', 'Rolling deployment and rollback plan', 'Capacity and disaster-recovery validation'] },
+  { id: 14, title: 'Provider Registry & Low-Code Config', detail: 'Database-owned model routing, cloud provider adapters, egress ceilings and admin-editable policy', progress: 100, done: 8, total: 8, status: 'complete', sprints: ['Provider and route registry owned by the database', 'OpenAI-compatible and Anthropic adapters', 'Encrypted provider credentials at rest', 'Classification egress ceiling per provider', 'Admin UI for providers and model routing', 'Platform settings table and admin editor', 'Prompt template registry', 'Vector store and storage provider adapters'] },
 ];
 
 const MODULE_KEYS = ['api', 'module', 'event', 'map', 'flags', 'prompts'] as const;
@@ -180,11 +180,8 @@ function App() {
 
       <main className="content">
         <header className="topbar">
-          <div>
-            <span className="crumb">PLATFORM / {t(`page.${view}.crumb` as TranslationKey)}</span>
-            <h1>{t(`page.${view}.title` as TranslationKey)}</h1>
-          </div>
-          <div className="top-actions">
+          <div className="top-actions" style={{ marginLeft: 'auto' }}>
+            <ThemeSwitcher compact />
             <LanguageSwitcher />
             <button className="secondary" onClick={() => setShowConnect(true)}>{t('action.apiKey')}</button>
             {view === 'roadmap'
@@ -347,32 +344,14 @@ function DeveloperPortal({ overview, onRoadmap, onOpen, onConnect }: { overview:
 
 function DetailPage({ kind, onBack }: { kind: 'rules' | 'architecture'; onBack: () => void }) {
   const { t } = useTranslation();
-  const rules = [
-    ['Control / Compute boundary', 'VM4 decides, manages and secures. VM5 performs GPU inference only; normal users never reach a model endpoint directly.'],
-    ['ERP remains system of record', 'AI orchestrates approved ERP APIs and never duplicates ERP business rules or writes ERP tables directly.'],
-    ['Gateway is mandatory', 'Browser and external callers use the AI Gateway only. Provider credentials and API keys stay server-side.'],
-    ['Authorization everywhere', 'RBAC + ABAC applies to assistants, agents, MCP, tools, knowledge, SQL, export and company context.'],
-    ['Permission-aware retrieval', 'Document ACL metadata follows every chunk. Retrieval filters access before content reaches the LLM.'],
-    ['Safe Text-to-SQL', 'Use a read-only account, semantic allowlists, company predicates, timeouts, result limits and immutable audit records.'],
-    ['Provider abstraction', 'LLM, embedding, vector, graph, search, storage, queue, vision and speech providers are adapters, not business dependencies.'],
-    ['Independent failure domains', 'AI failure must not affect ERP. VM5 loss leaves VM4 available; a compute node can be replaced without changing the portal.'],
-    ['Service-owned data', 'AI owns its database/schema. Cross-service work uses APIs or Kafka events; normal records use soft delete.'],
-    ['Observable and auditable', 'Every AI request, agent/tool call, SQL execution and configuration change creates usage metadata and audit events.'],
-    ['Configurable policy', 'Limits, model routing, agent/RAG rules and retention policy are configuration, not hard-coded business constants.'],
-    ['Consistent UI rules', 'Use the shared layout, modal dialogs, permission-aware UI, React Query, translated text and central theme configuration.'],
-  ];
-  const stack = [
-    ['Portal', 'React 19, Vite, TypeScript and the unified AI workspace UI, calling the Gateway with a scoped API key.'],
-    ['Control Plane', 'Go API on port 8080: configuration, service-owned migrations, API keys and quotas, usage/audit outbox, assistants and conversations, the compute registry, the knowledge corpus, the relationship graph, the agent orchestrator and a governed MCP client.'],
-    ['Compute Plane', 'Ollama in an isolated Docker network with NVIDIA GPU passthrough; qwen2.5:0.5b is the current development smoke-test model.'],
-    ['AI data', 'PostgreSQL 16 with pgvector: seven service-owned migrations covering keys, conversations, documents and chunks with 768-dimension embeddings, the graph, agent run traces and the MCP registry.'],
-    ['Cache and events', 'Redis 7 holds rate-limit counters under ai:*. Production reuses existing Redis namespaces and Kafka KRaft topics with ACLs.'],
-    ['Identity', 'Platform-owned API keys today: hashed, scoped, rate-limited per key and per tool, carrying a company, a department and a reading clearance. Production integrates with the existing Identity Service JWT, which is the one decision the portal is still waiting on.'],
-    ['Observability', 'A platform metric contract on /metrics covering tokens, cost, grounding and refusals; a GPU exporter on the compute plane; dashboards and alert rules versioned in infra/. Traces export to Tempo over OTLP when a collector is configured; Loki log shipping is not wired yet.'],
-    ['Ingress and deployment', 'Existing Nginx handles TLS/ingress. VM4 and VM5 use separate Docker Compose deployments before a future Kubernetes migration.'],
-    ['Storage and knowledge', 'StorageProvider ships a local adapter; NAS, S3 and MinIO remain adapter changes. Retrieval is pgvector cosine fused with PostgreSQL full-text, filtered by company, department and classification before ranking. Qdrant, Milvus and Neo4j remain replaceable behind their contracts.'],
-    ['Operational guard', 'VM5 exposes no public port, model/provider access passes through VM4, and ERP always continues when Node 4 is unavailable.'],
-  ];
+  const rules = Array.from({ length: 12 }, (_, i) => [
+    t(`governance.rule.${i + 1}.title` as TranslationKey),
+    t(`governance.rule.${i + 1}.desc` as TranslationKey),
+  ]);
+  const stack = Array.from({ length: 10 }, (_, i) => [
+    t(`governance.stack.${i + 1}.title` as TranslationKey),
+    t(`governance.stack.${i + 1}.desc` as TranslationKey),
+  ]);
   const items = kind === 'rules' ? rules : stack;
 
   return (
@@ -384,7 +363,6 @@ function DetailPage({ kind, onBack }: { kind: 'rules' | 'architecture'; onBack: 
         </div>
         <button className="secondary" onClick={onBack}>{t('action.backToPortal')}</button>
       </div>
-      <p className="source-note">{t('detail.sourceLanguage')}</p>
       <section className="detail-list">
         {items.map(([title, description], index) => (
           <article className="detail-item" key={title}>
@@ -503,9 +481,11 @@ const queryClient = new QueryClient({
 installTheme();
 
 createRoot(document.getElementById('root')!).render(
-  <LanguageProvider>
-    <QueryClientProvider client={queryClient}>
-      <App />
-    </QueryClientProvider>
-  </LanguageProvider>,
+  <ThemeProvider>
+    <LanguageProvider>
+      <QueryClientProvider client={queryClient}>
+        <App />
+      </QueryClientProvider>
+    </LanguageProvider>
+  </ThemeProvider>,
 );

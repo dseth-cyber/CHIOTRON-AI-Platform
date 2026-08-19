@@ -408,6 +408,47 @@ export async function setFavorite(
   await send(marked ? 'PUT' : 'DELETE', '/api/v1/favorites', { kind, targetId });
 }
 
+export type PlatformSetting = {
+  key: string;
+  value: string;
+  description: string;
+  updatedAt: string;
+  updatedBy: string;
+};
+
+export const fetchPlatformSettings = (signal?: AbortSignal) =>
+  get<PlatformSetting[]>('/api/v1/admin/settings', signal);
+
+export const updatePlatformSetting = (key: string, value: any, description?: string) =>
+  send<PlatformSetting>('PUT', `/api/v1/admin/settings/${encodeURIComponent(key)}`, { value, description });
+
+export type PromptTemplate = {
+  id: string;
+  slug: string;
+  name: string;
+  description: string;
+  template: string;
+  variables: string[];
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export const fetchPromptTemplates = (signal?: AbortSignal) =>
+  get<PromptTemplate[]>('/api/v1/prompts', signal);
+
+export const createPromptTemplate = (input: {
+  slug: string;
+  name: string;
+  description?: string;
+  template: string;
+  variables?: string[];
+}) => send<PromptTemplate>('POST', '/api/v1/admin/prompts', input);
+
+export async function deletePromptTemplate(id: string): Promise<void> {
+  await send('DELETE', `/api/v1/admin/prompts/${encodeURIComponent(id)}`);
+}
+
 export type ChatMessage = { role: 'system' | 'user' | 'assistant'; content: string };
 
 /**

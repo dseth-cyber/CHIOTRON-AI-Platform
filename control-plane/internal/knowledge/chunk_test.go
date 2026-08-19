@@ -23,7 +23,10 @@ func TestNewChunkPlanRejectsUnworkableSizes(t *testing.T) {
 }
 
 func TestSupportsMime(t *testing.T) {
-	for _, accepted := range []string{"text/plain", "text/markdown", "TEXT/PLAIN", "text/plain; charset=utf-8"} {
+	for _, accepted := range []string{
+		"text/plain", "text/markdown", "TEXT/PLAIN", "text/plain; charset=utf-8",
+		"application/json", "text/csv", "text/tab-separated-values",
+	} {
 		if !SupportsMime(accepted) {
 			t.Errorf("SupportsMime(%q) = false, want true", accepted)
 		}
@@ -43,6 +46,15 @@ func TestParse(t *testing.T) {
 	if strings.Contains(text, "\r") {
 		t.Errorf("Parse() left carriage returns in %q", text)
 	}
+
+	// Test valid JSON parsing
+	jsonText, err := Parse("application/json", []byte(`{"key": "value", "items": [1, 2, 3]}`))
+	if err != nil {
+		t.Fatalf("Parse(application/json) returned error: %v", err)
+	}
+	if !strings.Contains(jsonText, "key") {
+		t.Errorf("Parse(application/json) output missing content: %q", jsonText)
+	}
 }
 
 func TestParseRejectsUnusableContent(t *testing.T) {
@@ -55,6 +67,10 @@ func TestParseRejectsUnusableContent(t *testing.T) {
 	}
 	if _, err := Parse("text/plain", []byte("   \n\n  ")); err == nil {
 		t.Error("Parse() accepted whitespace-only content")
+	}
+	// Invalid JSON should be rejected
+	if _, err := Parse("application/json", []byte(`{invalid json`)); err == nil {
+		t.Error("Parse() accepted invalid JSON content")
 	}
 }
 

@@ -42,7 +42,15 @@ type Config struct {
 	// Knowledge platform. The storage provider of record and the classification
 	// policy are open decisions (ARCHITECTURE-v1 section 13 items 5 and 6), so
 	// both are configuration and the code names neither.
-	StorageRoot string
+	StorageProvider string
+	StorageRoot     string
+	S3Endpoint      string
+	S3Bucket        string
+	S3Region        string
+	S3AccessKey     string
+	S3SecretKey     string
+	S3PathStyle     bool
+
 	// CredentialEncryptionKey seals provider API keys at rest. It stays an
 	// environment variable on purpose: a key stored in the database it protects
 	// would protect nothing.
@@ -103,7 +111,13 @@ func Load(getenv func(string) string, version string) (Config, error) {
 		AllowedOrigins:          listVar(getenv, "CORS_ALLOWED_ORIGINS", "http://localhost:5173"),
 		ModelRoutes:             stringVar(getenv, "MODEL_ROUTES", "default=ollama/qwen2.5:0.5b"),
 		DefaultModel:            stringVar(getenv, "DEFAULT_MODEL", "default"),
+		StorageProvider:         stringVar(getenv, "STORAGE_PROVIDER", "local"),
 		StorageRoot:             stringVar(getenv, "STORAGE_ROOT", "/var/lib/chiotron/documents"),
+		S3Endpoint:              stringVar(getenv, "S3_ENDPOINT", "https://s3.amazonaws.com"),
+		S3Bucket:                stringVar(getenv, "S3_BUCKET", ""),
+		S3Region:                stringVar(getenv, "S3_REGION", "us-east-1"),
+		S3AccessKey:             stringVar(getenv, "S3_ACCESS_KEY", ""),
+		S3SecretKey:             stringVar(getenv, "S3_SECRET_KEY", ""),
 		CredentialEncryptionKey: stringVar(getenv, "CONFIG_ENCRYPTION_KEY", ""),
 		EmbeddingModel:          stringVar(getenv, "EMBEDDING_MODEL", "nomic-embed-text"),
 		ClassificationLevels: listVar(getenv, "CLASSIFICATION_LEVELS",
@@ -123,6 +137,14 @@ func Load(getenv func(string) string, version string) (Config, error) {
 	}
 	if cfg.RedisAddr == "" {
 		fail("REDIS_ADDR is required")
+	}
+	switch cfg.StorageProvider {
+	case "local", "s3", "minio":
+	default:
+		fail("STORAGE_PROVIDER %q is not a known provider (local, s3, minio)", cfg.StorageProvider)
+	}
+	if (cfg.StorageProvider == "s3" || cfg.StorageProvider == "minio") && cfg.S3Bucket == "" {
+		fail("S3_BUCKET is required when STORAGE_PROVIDER is %q", cfg.StorageProvider)
 	}
 	if len(cfg.AllowedOrigins) == 0 {
 		fail("CORS_ALLOWED_ORIGINS must list at least one origin")

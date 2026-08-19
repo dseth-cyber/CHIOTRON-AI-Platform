@@ -1,5 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useTranslation } from '../LanguageContext';
+import { useTheme } from '@/contexts/ThemeContext';
 
 export type SelectOption = {
   value: string;
@@ -38,6 +39,7 @@ export function SearchableSelect({
   placeholder?: string;
 }) {
   const { t } = useTranslation();
+  const { themeConfig } = useTheme();
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState('');
   const [active, setActive] = useState(0);
@@ -103,11 +105,17 @@ export function SearchableSelect({
   };
 
   return (
-    <div className="field searchable" ref={container}>
-      <span className={labelHidden ? 'visually-hidden' : undefined}>{label}</span>
+    <div className="relative w-full" ref={container}>
+      <span className={labelHidden ? 'sr-only' : `block text-xs font-medium mb-1.5 ${themeConfig.text.secondary}`}>
+        {label}
+      </span>
       <button
         type="button"
-        className="searchable-trigger"
+        className={`w-full px-4 py-2.5 rounded-xl text-sm border flex items-center justify-between transition-all ${
+          themeConfig.inputBorder
+        } ${themeConfig.inputBg} ${themeConfig.text.primary} focus:outline-none focus:ring-1 focus:ring-cyan-500/50 ${
+          disabled ? 'opacity-50 cursor-not-allowed' : ''
+        }`}
         disabled={disabled}
         aria-haspopup="listbox"
         aria-expanded={open}
@@ -115,17 +123,17 @@ export function SearchableSelect({
         onClick={() => setOpen((current) => !current)}
         onKeyDown={onKeyDown}
       >
-        <span className={selected ? '' : 'placeholder'}>
+        <span className={selected ? themeConfig.text.primary : themeConfig.text.secondary}>
           {selected?.label ?? placeholder ?? t('select.none')}
         </span>
-        <i aria-hidden="true">{open ? '▴' : '▾'}</i>
+        <span className={`text-xs ${themeConfig.text.secondary}`}>{open ? '▴' : '▾'}</span>
       </button>
 
       {open && (
-        <div className="searchable-panel">
+        <div className={`absolute z-50 mt-1.5 w-full rounded-xl border p-2 shadow-2xl ${themeConfig.cardBorder} ${themeConfig.card}`}>
           <input
             autoFocus
-            className="searchable-filter"
+            className={`w-full px-3 py-2 mb-2 rounded-lg text-xs border ${themeConfig.inputBorder} ${themeConfig.inputBg} ${themeConfig.text.primary} focus:outline-none`}
             value={filter}
             placeholder={t('select.filter')}
             aria-label={t('select.filter')}
@@ -135,21 +143,25 @@ export function SearchableSelect({
             }}
             onKeyDown={onKeyDown}
           />
-          <ul className="searchable-list" role="listbox" id={listId}>
-            {visible.length === 0 && <li className="searchable-empty">{t('select.noMatch')}</li>}
+          <ul className={`max-h-60 overflow-y-auto space-y-1 divide-y ${themeConfig.tableDivide}`} role="listbox" id={listId}>
+            {visible.length === 0 && (
+              <li className={`p-3 text-xs text-center ${themeConfig.text.secondary}`}>{t('select.noMatch')}</li>
+            )}
             {visible.map((option, index) => (
-              <li key={option.value}>
+              <li key={option.value} className="pt-1 first:pt-0">
                 <button
                   type="button"
                   role="option"
                   aria-selected={option.value === value}
                   disabled={option.disabled}
-                  className={index === active ? 'active' : ''}
+                  className={`w-full p-2.5 rounded-lg text-left text-xs transition-colors flex flex-col gap-0.5 ${
+                    index === active ? `${themeConfig.tableRow} ${themeConfig.primary}` : `${themeConfig.text.primary}`
+                  } ${option.disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}
                   onMouseEnter={() => setActive(index)}
                   onClick={() => choose(option)}
                 >
-                  <b>{option.label}</b>
-                  {option.detail && <small>{option.detail}</small>}
+                  <span className="font-semibold">{option.label}</span>
+                  {option.detail && <span className={`text-[11px] ${themeConfig.text.secondary}`}>{option.detail}</span>}
                 </button>
               </li>
             ))}

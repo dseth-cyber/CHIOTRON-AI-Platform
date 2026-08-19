@@ -40,9 +40,11 @@ import (
 	"github.com/chiotron/ai-control-plane/internal/mcp"
 	"github.com/chiotron/ai-control-plane/internal/migrate"
 	"github.com/chiotron/ai-control-plane/internal/migrations"
+	"github.com/chiotron/ai-control-plane/internal/prompt"
 	"github.com/chiotron/ai-control-plane/internal/provider/ollama"
 	"github.com/chiotron/ai-control-plane/internal/ratelimit"
 	"github.com/chiotron/ai-control-plane/internal/secret"
+	"github.com/chiotron/ai-control-plane/internal/settings"
 	"github.com/chiotron/ai-control-plane/internal/storage"
 	"github.com/chiotron/ai-control-plane/internal/store"
 	"github.com/chiotron/ai-control-plane/internal/telemetry"
@@ -161,6 +163,8 @@ func run() error {
 		Knowledge:         knowledgeDeps,
 		Agent:             agentDeps,
 		Favorites:         favorite.NewStore(pool),
+		Settings:          settings.NewStore(pool),
+		Prompts:           prompt.NewStore(pool),
 		Providers:         providers,
 		ReloadCompute:     live,
 		CredentialStorage: sealer.Enabled(),
@@ -225,7 +229,20 @@ func buildKnowledge(ctx context.Context, cfg config.Config, pool *pgxpool.Pool,
 	if err != nil {
 		return httpapi.Knowledge{}, fmt.Errorf("chunk plan: %w", err)
 	}
-	objects, err := storage.NewLocal(cfg.StorageRoot)
+	var objects storage.Provider
+	switch cfg.StorageProvider {
+	case "s3", "minio":
+		objects, err = storage.NewS3(storage.S3Config{
+			Endpoint:  cfg.S3Endpoint,
+			Bucket:    cfg.S3Bucket,
+			Region:    cfg.S3Region,
+			AccessKey: cfg.S3AccessKey,
+			SecretKey: cfg.S3SecretKey,
+			PathStyle: cfg.S3PathStyle,
+		})
+	default:
+		objects, err = storage.NewLocal(cfg.StorageRoot)
+	}
 	if err != nil {
 		return httpapi.Knowledge{}, err
 	}

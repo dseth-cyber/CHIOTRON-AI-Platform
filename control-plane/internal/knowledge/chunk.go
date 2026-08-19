@@ -1,15 +1,20 @@
 package knowledge
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"unicode/utf8"
 )
 
-// SupportedMimeTypes are the formats the parser understands today. PDF and
-// office formats need a parsing dependency and arrive with the connector work;
-// rejecting them now is better than storing bytes nobody can read.
-var SupportedMimeTypes = []string{"text/plain", "text/markdown"}
+// SupportedMimeTypes are the formats the parser understands today.
+var SupportedMimeTypes = []string{
+	"text/plain",
+	"text/markdown",
+	"application/json",
+	"text/csv",
+	"text/tab-separated-values",
+}
 
 // ChunkPlan is the chunking policy. Sizes are in characters rather than tokens:
 // tokenisation belongs to a model, and the corpus is multilingual, so a
@@ -47,8 +52,8 @@ func SupportsMime(mimeType string) bool {
 
 // Parse turns stored bytes into plain text.
 //
-// Both supported types are already text, so this normalises line endings and
-// rejects content that is not valid UTF-8 rather than embedding mojibake.
+// Normalises line endings and rejects content that is not valid UTF-8.
+// For JSON, verifies valid JSON structure.
 func Parse(mimeType string, content []byte) (string, error) {
 	if !SupportsMime(mimeType) {
 		return "", fmt.Errorf("unsupported content type %q (supported: %s)",
@@ -56,6 +61,14 @@ func Parse(mimeType string, content []byte) (string, error) {
 	}
 	if !utf8.Valid(content) {
 		return "", fmt.Errorf("content is not valid UTF-8")
+	}
+
+	baseMime := strings.ToLower(strings.TrimSpace(strings.Split(mimeType, ";")[0]))
+	if baseMime == "application/json" {
+		var raw json.RawMessage
+		if err := json.Unmarshal(content, &raw); err != nil {
+			return "", fmt.Errorf("invalid JSON document: %w", err)
+		}
 	}
 
 	text := strings.ReplaceAll(string(content), "\r\n", "\n")

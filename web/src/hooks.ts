@@ -11,6 +11,8 @@ import {
   fetchIdentity,
   fetchModels,
   fetchPlatform,
+  fetchPlatformSettings,
+  fetchPromptTemplates,
   fetchProviderRegistry,
   readCredential,
   setFavorite,
@@ -25,6 +27,8 @@ import {
   type Identity,
   type ModelCatalogue,
   type Platform,
+  type PlatformSetting,
+  type PromptTemplate,
   type ProviderRegistry,
 } from './api';
 
@@ -223,6 +227,40 @@ export function useRefreshDocuments(): () => void {
   const queryClient = useQueryClient();
   return useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: ['documents'] });
+  }, [queryClient]);
+}
+
+export function usePlatformSettings(enabled: boolean): UseQueryResult<PlatformSetting[], Error> {
+  const [credential] = useCredential();
+  return useQuery<PlatformSetting[], Error>({
+    queryKey: ['platform-settings', credential],
+    queryFn: ({ signal }) => fetchPlatformSettings(signal),
+    enabled: enabled && credential !== '',
+    retry: retryUnlessClientError,
+  });
+}
+
+export function usePromptTemplates(enabled: boolean): UseQueryResult<PromptTemplate[], Error> {
+  const [credential] = useCredential();
+  return useQuery<PromptTemplate[], Error>({
+    queryKey: ['prompt-templates', credential],
+    queryFn: ({ signal }) => fetchPromptTemplates(signal),
+    enabled: enabled && credential !== '',
+    retry: retryUnlessClientError,
+  });
+}
+
+export function useRefreshSettings(): () => void {
+  const queryClient = useQueryClient();
+  return useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: ['platform-settings'] });
+  }, [queryClient]);
+}
+
+export function useRefreshPrompts(): () => void {
+  const queryClient = useQueryClient();
+  return useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: ['prompt-templates'] });
   }, [queryClient]);
 }
 
