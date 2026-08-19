@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { Modal } from '../Modal';
 import { Tag } from '../components/EmptyState';
 import { SearchableSelect } from '../components/SearchableSelect';
 import {
@@ -15,7 +16,7 @@ import {
 import { useTheme } from '@/contexts/ThemeContext';
 import { useBrandIcon } from '@/contexts/BrandContext';
 import { useTranslation } from '../LanguageContext';
-import { LANGUAGES, LANGUAGE_NAMES, type Language, type TranslationKey } from '../i18n';
+import { LANGUAGES, LANGUAGE_NAMES, type Language } from '../i18n';
 import { classificationTone, statusTone, toneFor } from '../theme';
 import { SCOPE_ADMIN_KEYS, SCOPE_MODELS_READ } from '../Connection';
 import { updatePlatformSetting } from '../api';
@@ -54,7 +55,14 @@ export function Settings({ onConnect }: { onConnect: () => void }) {
 
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [editValue, setEditValue] = useState<string>('');
+  const [editDesc, setEditDesc] = useState<string>('');
   const [saveBusy, setSaveBusy] = useState<boolean>(false);
+
+  // Add Setting Modal
+  const [showAddModal, setShowAddModal] = useState<boolean>(false);
+  const [newKey, setNewKey] = useState<string>('');
+  const [newValue, setNewValue] = useState<string>('true');
+  const [newDesc, setNewDesc] = useState<string>('');
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -75,19 +83,22 @@ export function Settings({ onConnect }: { onConnect: () => void }) {
     }
   };
 
-  const handleStartEdit = (key: string, currentValue: string) => {
+  const handleStartEdit = (key: string, currentValue: string, currentDesc: string) => {
     setEditingKey(key);
     setEditValue(currentValue);
+    setEditDesc(currentDesc);
   };
 
-  const handleSaveSetting = async (key: string, description: string) => {
+  const handleSaveSetting = async (key: string, description: string, overrideValue?: any) => {
     setSaveBusy(true);
     try {
-      let parsedValue: any = editValue;
-      try {
-        parsedValue = JSON.parse(editValue);
-      } catch {
-        // If not valid JSON, pass as string
+      let parsedValue: any = overrideValue !== undefined ? overrideValue : editValue;
+      if (typeof parsedValue === 'string') {
+        try {
+          parsedValue = JSON.parse(parsedValue);
+        } catch {
+          // If not valid JSON, pass as string
+        }
       }
       await updatePlatformSetting(key, parsedValue, description);
       refreshSettings();
@@ -99,11 +110,34 @@ export function Settings({ onConnect }: { onConnect: () => void }) {
     }
   };
 
+  const handleAddNewSetting = async () => {
+    if (!newKey.trim()) return;
+    setSaveBusy(true);
+    try {
+      let parsedValue: any = newValue;
+      try {
+        parsedValue = JSON.parse(newValue);
+      } catch {}
+      await updatePlatformSetting(newKey.trim(), parsedValue, newDesc.trim());
+      refreshSettings();
+      setShowAddModal(false);
+      setNewKey('');
+      setNewValue('true');
+      setNewDesc('');
+    } catch (err) {
+      console.error('Failed to add setting', err);
+    } finally {
+      setSaveBusy(false);
+    }
+  };
+
+  const isBooleanSetting = (val: string) => val === 'true' || val === 'false';
+
   return (
     <>
       <section className="page-intro">
-        <p>{t('settings.intro')}</p>
-        <span>{t('settings.note')}</span>
+        <p>{t('page.settings.title')}</p>
+        <span>ศูนย์กลางการปรับแต่งธีม ไอคอนองค์กร การจัดการผู้ดูแล และนโยบายแพลตฟอร์ม</span>
       </section>
 
       <section className="settings-grid">
@@ -118,8 +152,8 @@ export function Settings({ onConnect }: { onConnect: () => void }) {
             >
               <span className="theme-select-icon">🔮</span>
               <div>
-                <strong>Modern Glassmorphism</strong>
-                <small>กระจกโปร่งแสง ไล่เฉดสีม่วงนีออน (แนะนำ)</small>
+                <b>Glassmorphism Modern</b>
+                <small>มิติกระจกใส แสงออร่าระดับพรีเมียม สไตล์ Gemini 3.6</small>
               </div>
             </button>
             <button
@@ -129,8 +163,8 @@ export function Settings({ onConnect }: { onConnect: () => void }) {
             >
               <span className="theme-select-icon">🌙</span>
               <div>
-                <strong>Dark (CHIOTRON)</strong>
-                <small>ธีมมืดดั้งเดิม น้ำเงินกรมท่า คลาสสิก</small>
+                <b>Dark Classic</b>
+                <small>โทนสีเข้ม คมชัด ถนอมสายตาสำหรับการทำงานระดับโปร</small>
               </div>
             </button>
             <button
@@ -140,42 +174,31 @@ export function Settings({ onConnect }: { onConnect: () => void }) {
             >
               <span className="theme-select-icon">☀️</span>
               <div>
-                <strong>Light</strong>
-                <small>ธีมสว่าง สะอาด เรียบง่าย</small>
+                <b>Clean Light</b>
+                <small>โทนสว่าง สะอาด สดใส สบายตา อ่านง่ายทุกมุมมอง</small>
               </div>
             </button>
           </div>
         </section>
 
-        {/* System Logo & Browser Favicon Customizer */}
+        {/* Brand Custom Logo / Icon Customizer */}
         <section className="panel" style={{ gridColumn: '1 / -1' }}>
-          <span className="panel-label">System Logo & Browser Tab Icon / โลโก้ระบบและไอคอนแท็บเบราว์เซอร์</span>
-          <p className="history-hint">กำหนดรูปภาพไอคอนที่จะแสดงผลทั้งที่แถบเมนูด้านข้าง (Sidebar) และไอคอนแท็บของ Browser (Favicon)</p>
-          
+          <span className="panel-label">Brand & Custom Icon / กำหนดไอคอนและโลโก้ระบบ</span>
+          <p className="history-hint">
+            คุณสามารถอัปโหลดรูปภาพหรือโลโก้องค์กร เพื่อใช้เป็นไอคอนประจำแถบเมนูด้านข้าง (Sidebar Logo) และ Favicon ของระบบได้ทันที
+          </p>
+
           <div className="brand-customizer-wrap">
             <div className="brand-preview-box">
-              <span className="preview-tag-label">ตัวอย่างการแสดงผลจริง (Live Preview)</span>
-              <div className="brand-preview-row">
-                <div className="preview-item">
-                  <small>ไอคอนแถบเมนูด้านข้าง (Sidebar):</small>
-                  <div className="preview-brand-demo">
-                    <div className={`brand-mark ${customIcon ? 'has-custom-img' : ''}`} style={{ overflow: 'hidden' }}>
+              <div className="brand-preview-header">
+                <span>ตัวอย่างการแสดงผลในแถบเมนู (Sidebar Preview)</span>
+              </div>
+              <div className="brand-preview-content">
+                <div className="brand-sample-sidebar">
+                  <div className="brand-sample-logo">
+                    <div className="brand-icon-wrapper" style={{ width: '28px', height: '28px', borderRadius: '8px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}>
                       {customIcon ? (
-                        <img src={customIcon} alt="Custom Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-                      ) : (
-                        'C'
-                      )}
-                    </div>
-                    <strong>CHIOTRON</strong>
-                  </div>
-                </div>
-
-                <div className="preview-item">
-                  <small>ไอคอนแท็บเบราว์เซอร์ (Browser Tab Favicon):</small>
-                  <div className="preview-tab-demo">
-                    <div className="preview-tab-favicon">
-                      {customIcon ? (
-                        <img src={customIcon} alt="Favicon" style={{ width: '16px', height: '16px', borderRadius: '3px', objectFit: 'contain' }} />
+                        <img src={customIcon} alt="Custom Brand Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
                       ) : (
                         <span style={{ display: 'inline-grid', placeItems: 'center', width: '16px', height: '16px', background: '#1bd9b2', color: '#05221f', borderRadius: '3px', fontSize: '11px', fontWeight: 900 }}>C</span>
                       )}
@@ -237,8 +260,8 @@ export function Settings({ onConnect }: { onConnect: () => void }) {
         </section>
 
         <section className="panel">
-          <span className="panel-label">{t('settings.language')}</span>
-          <p className="history-hint">{t('settings.language.body')}</p>
+          <span className="panel-label">ภาษา / Language</span>
+          <p className="history-hint">เลือกภาษาที่ต้องการให้ระบบแสดงผล</p>
           <SearchableSelect
             label={t('lang.label')}
             value={language}
@@ -252,56 +275,56 @@ export function Settings({ onConnect }: { onConnect: () => void }) {
         </section>
 
         <section className="panel">
-          <span className="panel-label">{t('settings.credential')}</span>
+          <span className="panel-label">คีย์การเชื่อมต่อ / API Credential</span>
           {credential === '' ? (
             <p className="history-hint">{t('conn.notConnected')}</p>
           ) : (
             <dl className="detail-pairs">
-              <dt>{t('settings.keyName')}</dt>
+              <dt>ชื่อคีย์ (Name)</dt>
               <dd>{identity.data?.name ?? '—'}</dd>
-              <dt>{t('settings.keyId')}</dt>
-              <dd>
-                <code>{identity.data?.keyId ?? '—'}</code>
-              </dd>
-              <dt>{t('settings.company')}</dt>
-              <dd>{identity.data?.companyId || t('settings.allCompanies')}</dd>
-              <dt>{t('settings.department')}</dt>
-              <dd>{identity.data?.department || t('settings.allDepartments')}</dd>
-              <dt>{t('home.stat.clearance')}</dt>
+              <dt>ระดับความลับสูงสุด (Max Clearance)</dt>
               <dd>
                 <Tag tone={toneFor(classificationTone, identity.data?.maxClassification)}>
                   {identity.data?.maxClassification ?? '—'}
                 </Tag>
               </dd>
-              <dt>{t('settings.rateLimit')}</dt>
+              <dt>โควตาการเรียกใช้งาน (Rate Limit)</dt>
               <dd>
                 {identity.data
-                  ? t('settings.perMinute', { count: formatNumber(identity.data.rateLimitPerMinute) })
+                  ? `${formatNumber(identity.data.rateLimitPerMinute)} คำขอ/นาที`
                   : '—'}
               </dd>
             </dl>
           )}
-          <button className="secondary" onClick={onConnect}>
+          <button className="primary" onClick={onConnect}>
             {credential === '' ? t('conn.addKey') : t('action.changeKey')}
           </button>
         </section>
 
         <section className="panel">
-          <span className="panel-label">{t('settings.gateway')}</span>
+          <span className="panel-label">ข้อมูลแพลตฟอร์ม / Platform Info</span>
           <dl className="detail-pairs">
-            <dt>{t('settings.endpoint')}</dt>
-            <dd>
-              <code>{import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080'}</code>
-            </dd>
-            <dt>{t('stat.environment')}</dt>
-            <dd>{platform.data?.environment ?? '—'}</dd>
-            <dt>{t('settings.version')}</dt>
+            <dt>ชื่อแพลตฟอร์ม</dt>
+            <dd>{platform.data?.name ?? '—'}</dd>
+            <dt>Control Plane</dt>
+            <dd>{platform.data?.plane ?? '—'}</dd>
+            <dt>เวอร์ชัน (Version)</dt>
             <dd>{platform.data?.version ?? '—'}</dd>
-            <dt>{t('stat.compute')}</dt>
+            <dt>สภาพแวดล้อม (Environment)</dt>
+            <dd>{platform.data?.environment ?? '—'}</dd>
+            <dt>ผู้ให้บริการประมวลผลหลัก</dt>
+            <dd>{platform.data?.computeProvider ?? '—'}</dd>
+          </dl>
+        </section>
+
+        <section className="panel">
+          <span className="panel-label">สถานะการทำงาน / Runtime Health</span>
+          <dl className="detail-pairs">
+            <dt>สถานะระบบ Compute</dt>
             <dd>
               <Tag tone={toneFor(statusTone, compute.data?.status)}>{compute.data?.status ?? '—'}</Tag>
             </dd>
-            <dt>{t('stat.models')}</dt>
+            <dt>โมเดลที่พร้อมใช้งาน</dt>
             <dd>
               {models.isSuccess
                 ? `${formatNumber(models.data.models.filter((entry) => entry.available).length)}/${formatNumber(models.data.models.length)}`
@@ -313,8 +336,23 @@ export function Settings({ onConnect }: { onConnect: () => void }) {
 
       {canAdmin && (
         <section className="panel">
-          <span className="panel-label">{t('settings.platformSettings')}</span>
-          <p className="history-hint">{t('settings.platformSettings.body')}</p>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
+            <div>
+              <span className="panel-label">{t('settings.platformSettings')}</span>
+              <p className="history-hint" style={{ margin: '4px 0 0' }}>
+                กำหนดค่าพารามิเตอร์การทำงานและนโยบายความเป็นส่วนตัวของระบบ AI (เช่น การบันทึกประวัติแชท, อุณหภูมิโมเดล, ขนาดเอกสาร)
+              </p>
+            </div>
+            <button
+              type="button"
+              className="primary"
+              onClick={() => setShowAddModal(true)}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+            >
+              ＋ เพิ่มการตั้งค่า
+            </button>
+          </div>
+
           {settingsQuery.isLoading ? (
             <p className="history-hint">{t('table.loading')}</p>
           ) : (settingsQuery.data ?? []).length === 0 ? (
@@ -324,64 +362,191 @@ export function Settings({ onConnect }: { onConnect: () => void }) {
               <table className="data-table">
                 <thead>
                   <tr>
-                    <th>{t('settings.column.key')}</th>
-                    <th>{t('settings.column.value')}</th>
+                    <th style={{ width: '220px' }}>{t('settings.column.key')}</th>
+                    <th style={{ width: '220px' }}>{t('settings.column.value')}</th>
                     <th>{t('settings.column.description')}</th>
-                    <th></th>
+                    <th style={{ width: '130px', textAlign: 'right' }}>การกระทำ</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {(settingsQuery.data ?? []).map((setting) => (
-                    <tr key={setting.key}>
-                      <td><code>{setting.key}</code></td>
-                      <td>
-                        {editingKey === setting.key ? (
-                          <input
-                            type="text"
-                            className="input-text"
-                            value={editValue}
-                            onChange={(e) => setEditValue(e.target.value)}
-                            disabled={saveBusy}
-                          />
-                        ) : (
-                          <code>{setting.value}</code>
-                        )}
-                      </td>
-                      <td><small>{setting.description}</small></td>
-                      <td style={{ textAlign: 'right' }}>
-                        {editingKey === setting.key ? (
-                          <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                            <button
-                              className="primary"
-                              onClick={() => handleSaveSetting(setting.key, setting.description)}
+                  {(settingsQuery.data ?? []).map((setting) => {
+                    const isBool = isBooleanSetting(setting.value);
+                    const boolVal = setting.value === 'true';
+
+                    return (
+                      <tr key={setting.key}>
+                        <td><code>{setting.key}</code></td>
+                        <td>
+                          {editingKey === setting.key ? (
+                            <input
+                              type="text"
+                              className="input-text"
+                              value={editValue}
+                              onChange={(e) => setEditValue(e.target.value)}
                               disabled={saveBusy}
+                            />
+                          ) : isBool ? (
+                            <button
+                              type="button"
+                              role="switch"
+                              aria-checked={boolVal}
+                              disabled={saveBusy}
+                              className={`ui-toggle-switch ${boolVal ? 'active' : ''}`}
+                              onClick={() => handleSaveSetting(setting.key, setting.description, !boolVal)}
+                              title={`คลิกเพื่อสลับเป็น ${boolVal ? 'ปิดใช้งาน (false)' : 'เปิดใช้งาน (true)'}`}
                             >
-                              {t('settings.save')}
+                              <span className="ui-toggle-track">
+                                <span className="ui-toggle-thumb" />
+                              </span>
+                              <span className="ui-toggle-label">
+                                {boolVal ? 'เปิด (ON)' : 'ปิด (OFF)'}
+                              </span>
                             </button>
+                          ) : (
+                            <code>{setting.value}</code>
+                          )}
+                        </td>
+                        <td>
+                          {editingKey === setting.key ? (
+                            <input
+                              type="text"
+                              className="input-text"
+                              value={editDesc}
+                              onChange={(e) => setEditDesc(e.target.value)}
+                              disabled={saveBusy}
+                            />
+                          ) : (
+                            <small>{setting.description}</small>
+                          )}
+                        </td>
+                        <td style={{ textAlign: 'right' }}>
+                          {editingKey === setting.key ? (
+                            <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
+                              <button
+                                className="primary"
+                                onClick={() => handleSaveSetting(setting.key, editDesc)}
+                                disabled={saveBusy}
+                              >
+                                {t('settings.save')}
+                              </button>
+                              <button
+                                className="secondary"
+                                onClick={() => setEditingKey(null)}
+                                disabled={saveBusy}
+                              >
+                                {t('action.cancel')}
+                              </button>
+                            </div>
+                          ) : (
                             <button
                               className="secondary"
-                              onClick={() => setEditingKey(null)}
-                              disabled={saveBusy}
+                              onClick={() => handleStartEdit(setting.key, setting.value, setting.description)}
                             >
-                              {t('action.cancel')}
+                              {t('settings.edit')}
                             </button>
-                          </div>
-                        ) : (
-                          <button
-                            className="secondary"
-                            onClick={() => handleStartEdit(setting.key, setting.value)}
-                          >
-                            {t('settings.edit')}
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
           )}
         </section>
+      )}
+
+      {/* Add New Setting Modal Dialog */}
+      {showAddModal && (
+        <Modal title="เพิ่มการตั้งค่าแพลตฟอร์ม (Add Platform Setting)" onClose={() => setShowAddModal(false)}>
+          <div style={{ display: 'grid', gap: '16px' }}>
+            <label className="field">
+              <span>ชื่อคีย์ (Setting Key)</span>
+              <input
+                type="text"
+                className="input-text"
+                placeholder="เช่น persist_prompts, history_turn_limit"
+                value={newKey}
+                onChange={(e) => setNewKey(e.target.value)}
+              />
+            </label>
+
+            <label className="field">
+              <span>ประเภทค่า (Value Type)</span>
+              <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+                <button
+                  type="button"
+                  className={`theme-select-card ${newValue === 'true' || newValue === 'false' ? 'active' : ''}`}
+                  style={{ padding: '8px 12px', flex: 1, minHeight: 'auto' }}
+                  onClick={() => setNewValue('true')}
+                >
+                  <b>🔘 สวิตช์ เปิด/ปิด (Boolean)</b>
+                </button>
+                <button
+                  type="button"
+                  className={`theme-select-card ${newValue !== 'true' && newValue !== 'false' ? 'active' : ''}`}
+                  style={{ padding: '8px 12px', flex: 1, minHeight: 'auto' }}
+                  onClick={() => setNewValue('20')}
+                >
+                  <b>🔢 ตัวเลข / ข้อความ</b>
+                </button>
+              </div>
+            </label>
+
+            {newValue === 'true' || newValue === 'false' ? (
+              <label className="field">
+                <span>สถานะเปิด/ปิด</span>
+                <div style={{ paddingTop: '6px' }}>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={newValue === 'true'}
+                    className={`ui-toggle-switch ${newValue === 'true' ? 'active' : ''}`}
+                    onClick={() => setNewValue(newValue === 'true' ? 'false' : 'true')}
+                  >
+                    <span className="ui-toggle-track">
+                      <span className="ui-toggle-thumb" />
+                    </span>
+                    <span className="ui-toggle-label">
+                      {newValue === 'true' ? 'เปิดใช้งาน (ON)' : 'ปิดใช้งาน (OFF)'}
+                    </span>
+                  </button>
+                </div>
+              </label>
+            ) : (
+              <label className="field">
+                <span>ค่าที่ตั้ง (Setting Value)</span>
+                <input
+                  type="text"
+                  className="input-text"
+                  placeholder="เช่น 20, 0.7 หรือข้อความ"
+                  value={newValue}
+                  onChange={(e) => setNewValue(e.target.value)}
+                />
+              </label>
+            )}
+
+            <label className="field">
+              <span>คำอธิบาย (Description)</span>
+              <input
+                type="text"
+                className="input-text"
+                placeholder="อธิบายวัตถุประสงค์และการทำงานของการตั้งค่านี้"
+                value={newDesc}
+                onChange={(e) => setNewDesc(e.target.value)}
+              />
+            </label>
+
+            <div className="modal-actions">
+              <button className="secondary" onClick={() => setShowAddModal(false)} disabled={saveBusy}>
+                {t('action.cancel')}
+              </button>
+              <button className="primary" onClick={handleAddNewSetting} disabled={saveBusy || !newKey.trim()}>
+                {saveBusy ? 'กำลังบันทึก...' : t('settings.save')}
+              </button>
+            </div>
+          </div>
+        </Modal>
       )}
 
       {credential !== '' && (
@@ -424,13 +589,13 @@ export function Settings({ onConnect }: { onConnect: () => void }) {
 
       <section className="panel">
         <span className="panel-label">{t('settings.scopes')}</span>
-        <p className="history-hint">{t('settings.scopes.body')}</p>
+        <p className="history-hint">สิทธิ์การเข้าถึงและการทำงานทั้งหมดที่คีย์นี้ได้รับอนุญาต</p>
         <ul className="scope-table">
           {ALL_SCOPES.map((scope) => (
             <li key={scope} className={has(scope) ? 'granted' : 'withheld'}>
               <span>{has(scope) ? '✓' : '·'}</span>
               <code>{scope}</code>
-              <small>{t(`scope.${scope}` as TranslationKey)}</small>
+              <small>{scope}</small>
             </li>
           ))}
         </ul>
