@@ -17,7 +17,7 @@ import type { Navigate } from '../navigation';
 export function Favorites({ onNavigate }: { onNavigate: Navigate }) {
   const { t, formatDate } = useTranslation();
   const { has } = useScopes();
-  const favorites = useFavorites(has(SCOPE_CHAT));
+  const favorites = useFavorites(true);
   const assistants = useAssistants(has(SCOPE_ASSISTANTS_READ));
 
   if (!has(SCOPE_CHAT)) {
@@ -25,6 +25,7 @@ export function Favorites({ onNavigate }: { onNavigate: Navigate }) {
   }
 
   const slugFor = new Map((assistants.data ?? []).map((entry) => [entry.id, entry.slug]));
+  const markedSet = new Set((favorites.data ?? []).map((f) => `${f.kind}:${f.targetId}`));
 
   const open = (mark: Favorite) => {
     switch (mark.kind) {
@@ -45,7 +46,12 @@ export function Favorites({ onNavigate }: { onNavigate: Navigate }) {
       key: 'favorite',
       header: '★',
       cell: (row) => (
-        <FavoriteButton kind={row.kind} targetId={row.targetId} marked label={row.label} />
+        <FavoriteButton
+          kind={row.kind}
+          targetId={row.targetId}
+          marked={markedSet.has(`${row.kind}:${row.targetId}`)}
+          label={row.label}
+        />
       ),
     },
     {

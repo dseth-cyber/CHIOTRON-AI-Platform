@@ -19,7 +19,7 @@ func cors(allowed []string) func(http.Handler) http.Handler {
 			origin := r.Header.Get("Origin")
 			if origin != "" && slices.Contains(allowed, origin) {
 				w.Header().Set("Access-Control-Allow-Origin", origin)
-				w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+				w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, PATCH, OPTIONS")
 				w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Active-Company")
 				w.Header().Set("Access-Control-Max-Age", "600")
 			}

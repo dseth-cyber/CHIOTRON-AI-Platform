@@ -187,8 +187,12 @@ export function useToggleFavorite(): (
   return useCallback(
     async (kind, targetId, marked) => {
       await setFavorite(kind, targetId, marked);
-      await queryClient.invalidateQueries({ queryKey: ['favorites'] });
-      await queryClient.refetchQueries({ queryKey: ['favorites', credential] });
+      // Immediately invalidate and refetch favorites to sync state across the app
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['favorites'] }),
+        queryClient.refetchQueries({ queryKey: ['favorites'] }),
+        queryClient.refetchQueries({ queryKey: ['favorites', credential] }),
+      ]);
     },
     [queryClient, credential],
   );

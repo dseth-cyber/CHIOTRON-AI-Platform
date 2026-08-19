@@ -22,37 +22,42 @@ export function FavoriteButton({
   const { t } = useTranslation();
   const toggle = useToggleFavorite();
   const [busy, setBusy] = useState(false);
-  const [optimisticMarked, setOptimisticMarked] = useState<boolean | null>(null);
-
-  const isMarked = optimisticMarked !== null ? optimisticMarked : marked;
+  const [isMarked, setIsMarked] = useState(marked);
 
   useEffect(() => {
-    setOptimisticMarked(null);
+    setIsMarked(marked);
   }, [marked]);
+
+  const handleToggle = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (busy) return;
+
+    const nextState = !isMarked;
+    setIsMarked(nextState);
+    setBusy(true);
+
+    try {
+      await toggle(kind, targetId, nextState);
+    } catch (err) {
+      console.error('Failed to toggle favorite:', err);
+      setIsMarked(!nextState); // Revert on failure
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
     <button
       type="button"
-      className={isMarked ? 'favorite marked' : 'favorite'}
+      className={`favorite ${isMarked ? 'marked' : ''}`}
       disabled={busy}
       aria-pressed={isMarked}
       title={isMarked ? t('favorite.remove', { label }) : t('favorite.add', { label })}
       aria-label={isMarked ? t('favorite.remove', { label }) : t('favorite.add', { label })}
-      onClick={async (e) => {
-        e.stopPropagation();
-        const next = !isMarked;
-        setOptimisticMarked(next);
-        setBusy(true);
-        try {
-          await toggle(kind, targetId, next);
-        } catch {
-          setOptimisticMarked(!next); // revert on error
-        } finally {
-          setBusy(false);
-        }
-      }}
+      onClick={handleToggle}
     >
-      {isMarked ? '★' : '☆'}
+      <span className="star-glyph">{isMarked ? '★' : '☆'}</span>
     </button>
   );
 }

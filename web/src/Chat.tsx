@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { ApiError, streamChat, type TokenUsage } from './api';
 import { FavoriteButton } from './components/FavoriteButton';
-import { useAssistants, useConversation, useFavorites, useRefreshHistory, useScopes } from './hooks';
+import { useAssistants, useConversation, useFavorites, useRefreshHistory } from './hooks';
 import { useTranslation } from './LanguageContext';
-import { SCOPE_CHAT } from './Connection';
 import type { ChatTarget, Navigate } from './navigation';
 
 type Turn = {
@@ -51,9 +50,8 @@ export function ChatWorkspace({
   onNavigate: Navigate;
 }) {
   const { t, formatNumber } = useTranslation();
-  const { has } = useScopes();
   const assistants = useAssistants(true);
-  const favorites = useFavorites(has(SCOPE_CHAT));
+  const favorites = useFavorites(true);
   const refreshHistory = useRefreshHistory();
 
   const [assistant, setAssistant] = useState(target?.assistant ?? '');

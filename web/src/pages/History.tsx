@@ -22,7 +22,7 @@ export function History({ onNavigate }: { onNavigate: Navigate }) {
   const [showTrash, setShowTrash] = useState(false);
   const [confirming, setConfirming] = useState<ConversationSummary | null>(null);
   const history = useConversations(has(SCOPE_CHAT), showTrash);
-  const favorites = useFavorites(has(SCOPE_CHAT));
+  const favorites = useFavorites(true);
   const refresh = useRefreshHistory();
   const [error, setError] = useState('');
 

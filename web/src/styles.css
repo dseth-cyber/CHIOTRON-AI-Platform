@@ -2496,6 +2496,73 @@ html.theme-light .upload-hint-text code {
   line-height: 1.4;
 }
 
+/* Favorite Star Button */
+.favorite {
+  background: transparent !important;
+  border: 0 !important;
+  outline: none !important;
+  color: #64748b !important;
+  font-size: 1.35rem;
+  line-height: 1;
+  padding: 4px 6px;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+}
+.favorite:hover {
+  color: #fbbf24 !important;
+  transform: scale(1.25);
+  filter: drop-shadow(0 0 6px rgba(251, 191, 36, 0.6));
+}
+.favorite:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+.favorite.marked {
+  color: #f59e0b !important;
+  font-size: 1.4rem;
+  filter: drop-shadow(0 0 8px rgba(245, 158, 11, 0.85)) !important;
+  transform: scale(1.1);
+}
+.favorite .star-glyph {
+  display: inline-block;
+  pointer-events: none;
+  font-size: 1.35rem;
+  line-height: 1;
+  color: inherit;
+}
+.favorite.marked .star-glyph {
+  color: #f59e0b !important;
+  text-shadow: 0 0 10px rgba(245, 158, 11, 0.85);
+  animation: starGlow 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+@keyframes starGlow {
+  0% { transform: scale(0.8); }
+  50% { transform: scale(1.35); }
+  100% { transform: scale(1); }
+}
+
+html.theme-light .favorite,
+html.light .favorite {
+  color: #94a3b8 !important;
+}
+html.theme-light .favorite:hover,
+html.light .favorite:hover {
+  color: #d97706 !important;
+}
+html.theme-light .favorite.marked,
+html.theme-light .favorite.marked .star-glyph,
+html.light .favorite.marked,
+html.light .favorite.marked .star-glyph {
+  color: #d97706 !important;
+  filter: drop-shadow(0 0 6px rgba(217, 119, 6, 0.5)) !important;
+  text-shadow: 0 0 8px rgba(217, 119, 6, 0.4) !important;
+}
+
 /* Transcript View */
 .gemini-transcript {
   display: flex;
