@@ -180,9 +180,24 @@ button, input, select, textarea {
   font-weight: 900;
   transition: all 0.2s ease;
 }
+.brand-mark.has-custom-img {
+  background: transparent !important;
+  background-color: transparent !important;
+  box-shadow: none;
+}
+.brand-mark.has-custom-img img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: 6px;
+  display: block;
+}
 .sidebar.collapsed .brand-mark:hover {
   transform: scale(1.12);
   box-shadow: 0 0 16px rgba(27, 217, 178, 0.65);
+}
+.sidebar.collapsed .brand-mark.has-custom-img:hover {
+  box-shadow: 0 0 16px rgba(0, 210, 255, 0.7);
 }
 html.theme-glassmorphism .sidebar.collapsed .brand-mark:hover {
   box-shadow: 0 0 18px rgba(0, 210, 255, 0.8);
@@ -1255,6 +1270,127 @@ html.theme-light .turn.assistant {
 .notice p { margin: 5px 0 0; }
 .providers-hint { color: var(--color-text-faint, #7e97a8); font-size: .76rem; }
 
+/* ==========================================================================
+   Brand Logo & Favicon Customizer in Settings
+   ========================================================================== */
+.brand-customizer-wrap {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  margin-top: 14px;
+  align-items: start;
+}
+@media (max-width: 900px) {
+  .brand-customizer-wrap {
+    grid-template-columns: 1fr;
+  }
+}
+.brand-preview-box {
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px dashed rgba(255, 255, 255, 0.15);
+  border-radius: 12px;
+  padding: 16px;
+}
+html.theme-light .brand-preview-box {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+}
+.preview-tag-label {
+  display: block;
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: #a78bfa;
+  margin-bottom: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+html.theme-light .preview-tag-label {
+  color: #0284c7;
+}
+.brand-preview-row {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.preview-item small {
+  display: block;
+  font-size: 0.76rem;
+  color: #94a3b8;
+  margin-bottom: 6px;
+}
+html.theme-light .preview-item small {
+  color: #64748b;
+}
+.preview-brand-demo {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(18, 10, 36, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 8px 14px;
+  border-radius: 10px;
+}
+html.theme-dark .preview-brand-demo {
+  background: #0b1728;
+  border-color: #294056;
+}
+html.theme-light .preview-brand-demo {
+  background: #ffffff;
+  border-color: #e2e8f0;
+  color: #0f172a;
+}
+.preview-brand-demo strong {
+  font-size: 0.95rem;
+  font-weight: 800;
+  letter-spacing: 1px;
+}
+.preview-tab-demo {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #1e1e24;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px 8px 0 0;
+  padding: 8px 14px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #f1f5f9;
+  width: fit-content;
+}
+html.theme-light .preview-tab-demo {
+  background: #e2e8f0;
+  border-color: #cbd5e1;
+  color: #0f172a;
+}
+.preview-tab-favicon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.brand-upload-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-start;
+}
+.upload-hint-text {
+  font-size: 0.78rem;
+  color: #94a3b8;
+  margin: 4px 0 0;
+  line-height: 1.5;
+}
+html.theme-light .upload-hint-text {
+  color: #64748b;
+}
+.upload-hint-text code {
+  background: rgba(255, 255, 255, 0.08);
+  padding: 2px 5px;
+  border-radius: 4px;
+}
+html.theme-light .upload-hint-text code {
+  background: #e2e8f0;
+  color: #0f172a;
+}
 
 @media (max-width: 1120px) { .quick-grid { grid-template-columns: repeat(2, 1fr); }.home-columns, .graph-columns, .settings-grid { grid-template-columns: 1fr; }.chat-page { height: auto; }.search-bar { grid-template-columns: 1fr; } }
 

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Tag } from '../components/EmptyState';
 import { SearchableSelect } from '../components/SearchableSelect';
 import {
@@ -13,6 +13,7 @@ import {
   useScopes,
 } from '../hooks';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useBrandIcon } from '@/contexts/BrandContext';
 import { useTranslation } from '../LanguageContext';
 import { LANGUAGES, LANGUAGE_NAMES, type Language, type TranslationKey } from '../i18n';
 import { classificationTone, statusTone, toneFor } from '../theme';
@@ -35,6 +36,11 @@ const ALL_SCOPES = [
 export function Settings({ onConnect }: { onConnect: () => void }) {
   const { t, language, setLanguage, formatNumber } = useTranslation();
   const { theme, setTheme } = useTheme();
+  const { customIcon, uploadIcon, resetIcon } = useBrandIcon();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [iconBusy, setIconBusy] = useState(false);
+  const [iconMsg, setIconMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
+
   const [credential] = useCredential();
   const identity = useIdentity();
   const platform = usePlatform();
@@ -49,6 +55,25 @@ export function Settings({ onConnect }: { onConnect: () => void }) {
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [editValue, setEditValue] = useState<string>('');
   const [saveBusy, setSaveBusy] = useState<boolean>(false);
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setIconMsg({ type: 'err', text: 'กรุณาเลือกไฟล์รูปภาพที่ถูกต้อง (PNG, JPG, SVG, WebP, ICO)' });
+      return;
+    }
+    setIconBusy(true);
+    setIconMsg(null);
+    try {
+      await uploadIcon(file);
+      setIconMsg({ type: 'ok', text: 'อัปเดตไอคอนระบบและ Favicon เรียบร้อยแล้ว!' });
+    } catch {
+      setIconMsg({ type: 'err', text: 'เกิดข้อผิดพลาดในการอัปโหลดรูปภาพ' });
+    } finally {
+      setIconBusy(false);
+    }
+  };
 
   const handleStartEdit = (key: string, currentValue: string) => {
     setEditingKey(key);
@@ -119,6 +144,95 @@ export function Settings({ onConnect }: { onConnect: () => void }) {
                 <small>ธีมสว่าง สะอาด เรียบง่าย</small>
               </div>
             </button>
+          </div>
+        </section>
+
+        {/* System Logo & Browser Favicon Customizer */}
+        <section className="panel" style={{ gridColumn: '1 / -1' }}>
+          <span className="panel-label">System Logo & Browser Tab Icon / โลโก้ระบบและไอคอนแท็บเบราว์เซอร์</span>
+          <p className="history-hint">กำหนดรูปภาพไอคอนที่จะแสดงผลทั้งที่แถบเมนูด้านข้าง (Sidebar) และไอคอนแท็บของ Browser (Favicon)</p>
+          
+          <div className="brand-customizer-wrap">
+            <div className="brand-preview-box">
+              <span className="preview-tag-label">ตัวอย่างการแสดงผลจริง (Live Preview)</span>
+              <div className="brand-preview-row">
+                <div className="preview-item">
+                  <small>ไอคอนแถบเมนูด้านข้าง (Sidebar):</small>
+                  <div className="preview-brand-demo">
+                    <div className={`brand-mark ${customIcon ? 'has-custom-img' : ''}`} style={{ overflow: 'hidden' }}>
+                      {customIcon ? (
+                        <img src={customIcon} alt="Custom Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                      ) : (
+                        'C'
+                      )}
+                    </div>
+                    <strong>CHIOTRON</strong>
+                  </div>
+                </div>
+
+                <div className="preview-item">
+                  <small>ไอคอนแท็บเบราว์เซอร์ (Browser Tab Favicon):</small>
+                  <div className="preview-tab-demo">
+                    <div className="preview-tab-favicon">
+                      {customIcon ? (
+                        <img src={customIcon} alt="Favicon" style={{ width: '16px', height: '16px', borderRadius: '3px', objectFit: 'contain' }} />
+                      ) : (
+                        <span style={{ display: 'inline-grid', placeItems: 'center', width: '16px', height: '16px', background: '#1bd9b2', color: '#05221f', borderRadius: '3px', fontSize: '11px', fontWeight: 900 }}>C</span>
+                      )}
+                    </div>
+                    <span>CHIOTRON AI Platform</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="brand-upload-actions">
+              <input
+                type="file"
+                ref={fileInputRef}
+                style={{ display: 'none' }}
+                accept="image/png,image/jpeg,image/svg+xml,image/webp,image/x-icon"
+                onChange={handleFileUpload}
+              />
+              <button
+                type="button"
+                className="primary"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={iconBusy}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="17 8 12 3 7 8" />
+                  <line x1="12" y1="3" x2="12" y2="15" />
+                </svg>
+                {iconBusy ? 'กำลังอัปโหลด...' : 'อัปโหลดรูปไอคอนใหม่'}
+              </button>
+
+              {customIcon && (
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={() => {
+                    resetIcon();
+                    setIconMsg({ type: 'ok', text: 'คืนค่าไอคอนเป็นค่าเริ่มต้นแล้ว' });
+                  }}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                >
+                  ↺ คืนค่าเริ่มต้น (Reset to Default)
+                </button>
+              )}
+
+              <p className="upload-hint-text">
+                💡 รองรับไฟล์ <code>PNG</code>, <code>JPG</code>, <code>SVG</code>, <code>WebP</code>, <code>ICO</code> (แนะนำขนาดสี่เหลี่ยมจัตุรัส 512×512px)
+              </p>
+
+              {iconMsg && (
+                <div style={{ marginTop: '8px', fontSize: '0.85rem', color: iconMsg.type === 'ok' ? '#2de1ba' : '#f87171' }}>
+                  {iconMsg.type === 'ok' ? '✓ ' : '✕ '} {iconMsg.text}
+                </div>
+              )}
+            </div>
           </div>
         </section>
 

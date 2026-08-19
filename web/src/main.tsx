@@ -7,6 +7,7 @@ import { ChatWorkspace } from './Chat';
 import { ConnectDialog, ConnectionBadge } from './Connection';
 import { LanguageProvider, LanguageSwitcher, useTranslation } from './LanguageContext';
 import { ThemeProvider } from './contexts/ThemeContext';
+import { BrandProvider, useBrandIcon } from './contexts/BrandContext';
 import { ThemeSwitcher } from './components/ThemeSwitcher';
 import type { TranslationKey } from './i18n';
 import { useComputeHealth, useCredential, useModels, usePlatform } from './hooks';
@@ -102,6 +103,7 @@ const NAV_GROUPS: NavGroup[] = [
 
 function App() {
   const { t } = useTranslation();
+  const { customIcon } = useBrandIcon();
   const [view, setView] = useState<View>('home');
   const [chatTarget, setChatTarget] = useState<ChatTarget | null>(null);
   const [collapsed, setCollapsed] = useState(false);
@@ -148,7 +150,13 @@ function App() {
             title={collapsed ? "คลิกเพื่อขยายเมนู (Click to expand)" : "หน้าแรก (Home)"}
             style={{ cursor: 'pointer' }}
           >
-            <span className="brand-mark">C</span>
+            <span className={`brand-mark ${customIcon ? 'has-custom-img' : ''}`} style={{ overflow: 'hidden' }}>
+              {customIcon ? (
+                <img src={customIcon} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+              ) : (
+                'C'
+              )}
+            </span>
             {!collapsed && <span className="brand-text">CHIOTRON</span>}
           </div>
           {!collapsed && (
@@ -506,11 +514,13 @@ const queryClient = new QueryClient({
 installTheme();
 
 createRoot(document.getElementById('root')!).render(
-  <ThemeProvider>
-    <LanguageProvider>
-      <QueryClientProvider client={queryClient}>
-        <App />
-      </QueryClientProvider>
-    </LanguageProvider>
-  </ThemeProvider>,
+  <BrandProvider>
+    <ThemeProvider>
+      <LanguageProvider>
+        <QueryClientProvider client={queryClient}>
+          <App />
+        </QueryClientProvider>
+      </LanguageProvider>
+    </ThemeProvider>
+  </BrandProvider>,
 );
