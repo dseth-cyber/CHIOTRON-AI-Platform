@@ -1,6 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { useTranslation } from '../LanguageContext';
-import { useTheme } from '@/contexts/ThemeContext';
 
 export type Column<Row> = {
   key: string;
@@ -48,7 +47,6 @@ export function DataTable<Row>({
   trash?: { showing: boolean; onToggle: (showing: boolean) => void; count?: number };
 }) {
   const { t, formatNumber } = useTranslation();
-  const { themeConfig } = useTheme();
   const [sort, setSort] = useState<Sort | null>(null);
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(PAGE_SIZES[0]!);
@@ -89,17 +87,13 @@ export function DataTable<Row>({
   };
 
   return (
-    <section className={`rounded-xl border ${themeConfig.border} ${themeConfig.card} overflow-hidden`}>
-      <header className={`p-4 border-b ${themeConfig.border} flex items-center justify-between flex-wrap gap-3`}>
-        <div className="flex items-center gap-2 flex-wrap">{actions}</div>
-        <div className="flex items-center gap-2">
+    <section className="table-block">
+      <div className="table-bar">
+        <div className="table-actions">{actions}</div>
+        <div className="table-tools">
           {trash && (
             <button
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
-                trash.showing
-                  ? `${themeConfig.buttonGradient} text-white border-transparent`
-                  : `${themeConfig.border} ${themeConfig.inputBg} ${themeConfig.text.primary}`
-              }`}
+              className={`table-btn ${trash.showing ? 'active' : ''}`}
               aria-pressed={trash.showing}
               onClick={() => {
                 trash.onToggle(!trash.showing);
@@ -111,27 +105,24 @@ export function DataTable<Row>({
             </button>
           )}
           <button
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium border ${themeConfig.border} ${themeConfig.inputBg} ${themeConfig.text.secondary} hover:${themeConfig.text.primary}`}
+            className={`table-btn ${showPicker ? 'active' : ''}`}
             onClick={() => setShowPicker((open) => !open)}
           >
             {t('table.columns')}
           </button>
         </div>
-      </header>
+      </div>
 
       {showPicker && (
-        <div className={`p-3 border-b ${themeConfig.border} ${themeConfig.inputBg} flex items-center gap-4 flex-wrap text-xs`}>
+        <div className="column-picker">
           {columns.map((column) => (
-            <label key={column.key} className={`flex items-center gap-1.5 cursor-pointer ${themeConfig.text.primary}`}>
+            <label key={column.key}>
               <input
                 type="checkbox"
-                className="rounded border-gray-400"
                 checked={visible.has(column.key)}
                 onChange={() =>
                   setVisible((existing) => {
                     const next = new Set(existing);
-                    // The last visible column cannot be hidden: a table with no
-                    // columns is not a smaller table, it is a broken one.
                     if (next.has(column.key) && next.size > 1) next.delete(column.key);
                     else next.add(column.key);
                     return next;
@@ -144,18 +135,16 @@ export function DataTable<Row>({
         </div>
       )}
 
-      {error && <p className="p-4 text-xs text-red-400 bg-red-500/10 border-b border-red-500/20">{error}</p>}
+      {error && <p className="error-note">{error}</p>}
 
-      <div className="overflow-x-auto">
-        <table className="w-full text-left">
-          <thead className={themeConfig.tableHeader}>
+      <div className="table-scroll">
+        <table className="data-table">
+          <thead>
             <tr>
               {shown.map((column) => (
                 <th
                   key={column.key}
-                  className={`px-4 py-3 text-xs font-semibold tracking-wider ${themeConfig.text.primary} ${
-                    column.align === 'end' ? 'text-right' : 'text-left'
-                  }`}
+                  className={column.align === 'end' ? 'end' : ''}
                   aria-sort={
                     sort?.key === column.key
                       ? sort.direction === 'asc'
@@ -165,14 +154,9 @@ export function DataTable<Row>({
                   }
                 >
                   {column.sortValue ? (
-                    <button
-                      className="inline-flex items-center gap-1.5 focus:outline-none"
-                      onClick={() => toggleSort(column)}
-                    >
+                    <button onClick={() => toggleSort(column)}>
                       <span>{column.header}</span>
-                      <span className={`text-[10px] ${themeConfig.text.secondary}`}>
-                        {sort?.key === column.key ? (sort.direction === 'asc' ? '▲' : '▼') : '↕'}
-                      </span>
+                      <i>{sort?.key === column.key ? (sort.direction === 'asc' ? ' ▲' : ' ▼') : ' ↕'}</i>
                     </button>
                   ) : (
                     column.header
@@ -181,31 +165,22 @@ export function DataTable<Row>({
               ))}
             </tr>
           </thead>
-          <tbody className={`divide-y ${themeConfig.tableDivide}`}>
+          <tbody>
             {loading && (
-              <tr className={`border-b ${themeConfig.tableBorder}`}>
-                <td colSpan={shown.length} className={`p-8 text-center text-sm ${themeConfig.text.secondary}`}>
-                  {t('table.loading')}
-                </td>
+              <tr className="table-state">
+                <td colSpan={shown.length}>{t('table.loading')}</td>
               </tr>
             )}
             {!loading && visibleRows.length === 0 && (
-              <tr className={`border-b ${themeConfig.tableBorder}`}>
-                <td colSpan={shown.length} className={`p-8 text-center text-sm ${themeConfig.text.secondary}`}>
-                  {empty ?? t('table.empty')}
-                </td>
+              <tr className="table-state">
+                <td colSpan={shown.length}>{empty ?? t('table.empty')}</td>
               </tr>
             )}
             {!loading &&
               visibleRows.map((row) => (
-                <tr key={rowKey(row)} className={`border-b ${themeConfig.tableBorder} ${themeConfig.tableRow}`}>
+                <tr key={rowKey(row)}>
                   {shown.map((column) => (
-                    <td
-                      key={column.key}
-                      className={`px-4 py-3 text-sm ${themeConfig.text.primary} ${
-                        column.align === 'end' ? 'text-right' : 'text-left'
-                      }`}
-                    >
+                    <td key={column.key} className={column.align === 'end' ? 'end' : ''}>
                       {column.cell(row)}
                     </td>
                   ))}
@@ -215,8 +190,8 @@ export function DataTable<Row>({
         </table>
       </div>
 
-      <footer className={`p-4 border-t ${themeConfig.border} flex items-center justify-between flex-wrap gap-3 text-xs`}>
-        <span className={themeConfig.text.secondary}>
+      <footer className="table-pager">
+        <span className="table-count">
           {loading
             ? t('table.loading')
             : t('table.range', {
@@ -225,17 +200,13 @@ export function DataTable<Row>({
                 total: formatNumber(sorted.length),
               })}
         </span>
-        <div className="flex items-center gap-2">
-          <span className={themeConfig.text.secondary}>{t('table.perPage')}</span>
-          <div className="flex items-center gap-1">
+        <div className="pager-sizes">
+          <span>{t('table.perPage')}</span>
+          <div className="pager-btn-group">
             {PAGE_SIZES.map((size) => (
               <button
                 key={size}
-                className={`px-2.5 py-1 rounded-md text-xs font-semibold border transition-all ${
-                  size === pageSize
-                    ? `${themeConfig.buttonGradient} text-white border-transparent`
-                    : `${themeConfig.border} ${themeConfig.inputBg} ${themeConfig.text.secondary} hover:${themeConfig.text.primary}`
-                }`}
+                className={size === pageSize ? 'pager-btn active' : 'pager-btn'}
                 aria-pressed={size === pageSize}
                 onClick={() => {
                   setPageSize(size);
@@ -247,19 +218,17 @@ export function DataTable<Row>({
             ))}
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="pager-nav">
           <button
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium border ${themeConfig.border} ${themeConfig.inputBg} ${themeConfig.text.primary} disabled:opacity-40 disabled:cursor-not-allowed`}
+            className="pager-btn"
             disabled={current === 0}
             onClick={() => setPage(current - 1)}
           >
             {t('table.previous')}
           </button>
-          <span className={themeConfig.text.secondary}>
-            {t('table.page', { page: current + 1, total: pageCount })}
-          </span>
+          <span>{t('table.page', { page: current + 1, total: pageCount })}</span>
           <button
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium border ${themeConfig.border} ${themeConfig.inputBg} ${themeConfig.text.primary} disabled:opacity-40 disabled:cursor-not-allowed`}
+            className="pager-btn"
             disabled={current >= pageCount - 1}
             onClick={() => setPage(current + 1)}
           >

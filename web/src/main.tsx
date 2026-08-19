@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import './styles.css';
@@ -151,26 +151,58 @@ const TITLES: Record<View, TranslationKey> = {
   prompts: 'module.prompts.title',
 };
 
+const PHASES_STORAGE_KEY = 'chiotron_roadmap_phases_v1';
+
+function loadSavedPhases(): Phase[] {
+  try {
+    const raw = localStorage.getItem(PHASES_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch {}
+  return initialPhases;
+}
+
 function App() {
   const { t } = useTranslation();
   const { customIcon } = useBrandIcon();
   const [view, setView] = useState<View>('home');
   const [chatTarget, setChatTarget] = useState<ChatTarget | null>(null);
   const [collapsed, setCollapsed] = useState(false);
-  const [phases, setPhases] = useState(initialPhases);
+  const [phases, setPhases] = useState<Phase[]>(loadSavedPhases);
   const [expanded, setExpanded] = useState<number | null>(1);
   const [showAdd, setShowAdd] = useState(false);
   const [showConnect, setShowConnect] = useState(false);
   const [showUpdate, setShowUpdate] = useState<number | null>(null);
 
+  useEffect(() => {
+    try {
+      localStorage.setItem(PHASES_STORAGE_KEY, JSON.stringify(phases));
+    } catch {}
+  }, [phases]);
+
   const overview = useMemo<Overview>(() => {
     const total = phases.reduce((sum, phase) => sum + phase.total, 0);
     const done = phases.reduce((sum, phase) => sum + phase.done, 0);
-    return { total, done, progress: Math.round((done / total) * 100), active: phases.filter((phase) => phase.status === 'active').length };
+    return { total, done, progress: total > 0 ? Math.round((done / total) * 100) : 0, active: phases.filter((phase) => phase.status === 'active').length };
   }, [phases]);
 
   const updateProgress = (id: number, progress: number) => setPhases((current) => current.map((phase) => phase.id !== id ? phase : { ...phase, progress, done: Math.round((progress / 100) * phase.total), status: progress === 100 ? 'complete' : progress > 0 ? 'active' : 'planned' }));
-  const addPhase = () => { const id = Math.max(...phases.map((phase) => phase.id)) + 1; setPhases((current) => [...current, { id, title: 'New delivery phase', detail: 'Define the objective and delivery milestones.', progress: 0, done: 0, total: 3, status: 'planned', sprints: ['Define outcome', 'Implement', 'Validate'] }]); setShowAdd(false); setView('roadmap'); };
+  
+  const addPhase = (newPhase: Omit<Phase, 'id'>) => {
+    const id = phases.length > 0 ? Math.max(...phases.map((p) => p.id)) + 1 : 1;
+    setPhases((current) => [...current, { id, ...newPhase }]);
+    setShowAdd(false);
+    setView('roadmap');
+  };
+
+  const resetPhases = () => {
+    setPhases(initialPhases);
+    try {
+      localStorage.removeItem(PHASES_STORAGE_KEY);
+    } catch {}
+  };
 
   // Navigating to chat with a target remounts the workspace, so a conversation
   // opened from history replaces whatever was on screen rather than merging with it.
@@ -300,19 +332,16 @@ function App() {
         {view === 'providers' && <Providers />}
         {view === 'settings' && <Settings onConnect={() => setShowConnect(true)} />}
         {view === 'portal' && <DeveloperPortal overview={overview} onRoadmap={() => setView('roadmap')} onOpen={setView} onConnect={() => setShowConnect(true)} />}
-        {view === 'roadmap' && <Roadmap phases={phases} overview={overview} expanded={expanded} setExpanded={setExpanded} onUpdate={setShowUpdate} onAdd={() => setShowAdd(true)} />}
+        {view === 'roadmap' && <Roadmap phases={phases} overview={overview} expanded={expanded} setExpanded={setExpanded} onUpdate={setShowUpdate} onAdd={() => setShowAdd(true)} onReset={resetPhases} />}
         {isDetailPage(view) && <DetailPage kind={view} onBack={() => setView('portal')} />}
       </main>
 
       {showConnect && <ConnectDialog onClose={() => setShowConnect(false)} />}
       {showAdd && (
-        <Modal title={t('dialog.addPhase.title')} onClose={() => setShowAdd(false)}>
-          <p>{t('dialog.addPhase.body')}</p>
-          <div className="modal-actions">
-            <button className="secondary" onClick={() => setShowAdd(false)}>{t('action.cancel')}</button>
-            <button className="primary" onClick={addPhase}>{t('action.addPhase')}</button>
-          </div>
-        </Modal>
+        <AddPhaseModal
+          onClose={() => setShowAdd(false)}
+          onSave={addPhase}
+        />
       )}
       {showUpdate !== null && <ProgressModal phase={phases.find((phase) => phase.id === showUpdate)!} onClose={() => setShowUpdate(null)} onSave={(progress) => { updateProgress(showUpdate, progress); setShowUpdate(null); }} />}
     </div>
@@ -575,7 +604,7 @@ function isBlocked(phase: Phase): boolean {
   return phase.blocker !== undefined && phase.status !== 'complete';
 }
 
-function Roadmap({ phases, overview, expanded, setExpanded, onUpdate, onAdd }: { phases: Phase[]; overview: Overview; expanded: number | null; setExpanded: (id: number | null) => void; onUpdate: (id: number) => void; onAdd: () => void }) {
+function Roadmap({ phases, overview, expanded, setExpanded, onUpdate, onAdd, onReset }: { phases: Phase[]; overview: Overview; expanded: number | null; setExpanded: (id: number | null) => void; onUpdate: (id: number) => void; onAdd: () => void; onReset?: () => void }) {
   const { t } = useTranslation();
   const statusLabel = (phase: Phase) =>
     isBlocked(phase) ? t('status.blocked') : t(`status.${phase.status}` as TranslationKey);
@@ -593,7 +622,22 @@ function Roadmap({ phases, overview, expanded, setExpanded, onUpdate, onAdd }: {
             <span><b>{blockedCount}</b> {t('roadmap.blockedPhases')}</span>
           </div>
         </div>
-        <button className="primary" onClick={onAdd}>{t('action.addPhase')}</button>
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+          {onReset && (
+            <button
+              className="secondary"
+              onClick={() => {
+                if (window.confirm('คุณต้องการคืนค่าแผนงานกลับสู่ค่าเริ่มต้นทั้งหมดหรือไม่? (Reset to default)')) {
+                  onReset();
+                }
+              }}
+              title="คืนค่าแผนงานกลับสู่ค่าเริ่มต้น"
+            >
+              ↺ คืนค่าเริ่มต้น
+            </button>
+          )}
+          <button className="primary" onClick={onAdd}>{t('action.addPhase')}</button>
+        </div>
       </section>
       <p className="source-note">{t('detail.sourceLanguage')}</p>
       <section className="phase-list">
@@ -642,6 +686,104 @@ function Roadmap({ phases, overview, expanded, setExpanded, onUpdate, onAdd }: {
 }
 
 function Progress({ value }: { value: number }) { return <span className="progress"><i style={{ width: `${value}%` }} /></span>; }
+
+function AddPhaseModal({ onClose, onSave }: { onClose: () => void; onSave: (phase: Omit<Phase, 'id'>) => void }) {
+  const { t } = useTranslation();
+  const [title, setTitle] = useState('');
+  const [detail, setDetail] = useState('');
+  const [sprintsText, setSprintsText] = useState('');
+  const [status, setStatus] = useState<PhaseStatus>('planned');
+  const [progress, setProgress] = useState(0);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!title.trim()) return;
+
+    const sprints = sprintsText
+      .split('\n')
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    const finalSprints = sprints.length > 0 ? sprints : ['วางแผนและกำหนดเป้าหมาย', 'พัฒนาระบบและทดสอบ', 'ส่งมอบงาน'];
+    const total = finalSprints.length;
+    const done = Math.round((progress / 100) * total);
+
+    onSave({
+      title: title.trim(),
+      detail: detail.trim() || 'กำหนดเป้าหมายและขั้นตอนการส่งมอบงาน',
+      progress,
+      done,
+      total,
+      status: progress === 100 ? 'complete' : status,
+      sprints: finalSprints,
+    });
+  };
+
+  return (
+    <Modal title="เพิ่มเฟสงานใหม่ (Add Phase)" onClose={onClose}>
+      <form onSubmit={handleSubmit} style={{ display: 'grid', gap: '14px' }}>
+        <label className="field" style={{ margin: 0 }}>
+          <span>ชื่อเฟสงาน (Phase Title) *</span>
+          <input
+            type="text"
+            required
+            placeholder="เช่น Enterprise Data Mesh & Real-time Analytics"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+          />
+        </label>
+
+        <label className="field" style={{ margin: 0 }}>
+          <span>รายละเอียดเป้าหมาย (Objective & Scope)</span>
+          <textarea
+            rows={2}
+            placeholder="อธิบายวัตถุประสงค์และขอบเขตงานของเฟสนี้..."
+            value={detail}
+            onChange={(e) => setDetail(e.target.value)}
+          />
+        </label>
+
+        <label className="field" style={{ margin: 0 }}>
+          <span>รายการสปรินต์/ไมล์สโตน (Sprints / Deliverables - 1 บรรทัดต่อ 1 ข้อ)</span>
+          <textarea
+            rows={3}
+            placeholder="1. ออกแบบสถาปัตยกรรมข้อมูล&#10;2. พัฒนา Pipeline และ Connector&#10;3. ทดสอบความถูกต้องและประสิทธิภาพ"
+            value={sprintsText}
+            onChange={(e) => setSprintsText(e.target.value)}
+          />
+        </label>
+
+        <div className="field-row" style={{ margin: 0 }}>
+          <label className="field" style={{ margin: 0 }}>
+            <span>สถานะเริ่มต้น (Status)</span>
+            <select value={status} onChange={(e) => setStatus(e.target.value as PhaseStatus)}>
+              <option value="planned">วางแผน (Planned)</option>
+              <option value="active">กำลังดำเนินการ (Active)</option>
+              <option value="complete">เสร็จสมบูรณ์ (Complete)</option>
+            </select>
+          </label>
+
+          <label className="field" style={{ margin: 0 }}>
+            <span>ความคืบหน้าเริ่มต้น ({progress}%)</span>
+            <input
+              type="range"
+              min="0"
+              max="100"
+              step="5"
+              value={progress}
+              onChange={(e) => setProgress(Number(e.target.value))}
+            />
+          </label>
+        </div>
+
+        <div className="modal-actions" style={{ marginTop: '12px' }}>
+          <button type="button" className="secondary" onClick={onClose}>{t('action.cancel')}</button>
+          <button type="submit" className="primary">เพิ่มเฟสงาน (Save Phase)</button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
 
 function ProgressModal({ phase, onClose, onSave }: { phase: Phase; onClose: () => void; onSave: (value: number) => void }) {
   const { t } = useTranslation();
