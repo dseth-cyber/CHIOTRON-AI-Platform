@@ -24,6 +24,7 @@ import { SharedChats } from './pages/SharedChats';
 import { Analyze } from './pages/Analyze';
 import { Create } from './pages/Create';
 import { Providers } from './pages/Providers';
+import { EnterpriseBlueprint } from './pages/EnterpriseBlueprint';
 
 type PhaseStatus = 'complete' | 'active' | 'planned';
 /**
@@ -250,6 +251,8 @@ const CRUMBS: Record<View, TranslationKey> = {
   roadmap: 'page.roadmap.crumb',
   rules: 'page.rules.crumb',
   architecture: 'page.architecture.crumb',
+  capabilities: 'page.portal.crumb',
+  blueprint: 'page.portal.crumb',
   api: 'page.portal.crumb',
   module: 'page.portal.crumb',
   event: 'page.portal.crumb',
@@ -275,6 +278,8 @@ const TITLES: Record<View, TranslationKey> = {
   roadmap: 'page.roadmap.title',
   rules: 'page.rules.title',
   architecture: 'page.architecture.title',
+  capabilities: 'page.portal.title',
+  blueprint: 'page.portal.title',
   api: 'module.api.title',
   module: 'module.module.title',
   event: 'module.event.title',
@@ -346,7 +351,7 @@ function App() {
   };
 
   const isDetailPage = (v: View): v is DetailKind =>
-    ['rules', 'architecture', 'api', 'module', 'event', 'map', 'flags', 'prompts'].includes(v);
+    ['rules', 'architecture', 'capabilities', 'blueprint', 'api', 'module', 'event', 'map', 'flags', 'prompts'].includes(v);
 
   // The governance detail pages are opened from the Developer Portal, so that
   // nav entry has to stay lit while one of them is on screen.
@@ -370,7 +375,7 @@ function App() {
           </svg>
         </button>
         <div className="mobile-brand" onClick={() => navigate('home')}>
-          <span className="brand-mark" style={{ overflow: 'hidden' }}>
+          <span className={`brand-mark ${customIcon ? 'has-custom-img' : ''}`} style={{ overflow: 'hidden' }}>
             {customIcon ? <img src={customIcon} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} /> : 'C'}
           </span>
           <span className="brand-text">CHIOTRON</span>
@@ -510,7 +515,8 @@ function App() {
         {view === 'settings' && <Settings onConnect={() => setShowConnect(true)} />}
         {view === 'portal' && <DeveloperPortal overview={overview} onRoadmap={() => setView('roadmap')} onOpen={setView} onConnect={() => setShowConnect(true)} />}
         {view === 'roadmap' && <Roadmap phases={phases} overview={overview} expanded={expanded} setExpanded={setExpanded} onUpdate={setShowUpdate} onAdd={() => setShowAdd(true)} onReset={resetPhases} />}
-        {isDetailPage(view) && <DetailPage kind={view} onBack={() => setView('portal')} />}
+        {(view === 'capabilities' || view === 'blueprint') && <EnterpriseBlueprint onBack={() => setView('portal')} />}
+        {isDetailPage(view) && view !== 'capabilities' && view !== 'blueprint' && <DetailPage kind={view} onBack={() => setView('portal')} />}
       </main>
 
       {showConnect && <ConnectDialog onClose={() => setShowConnect(false)} />}
@@ -536,8 +542,41 @@ function Stat({ label, value, hint, tone }: { label: string; value: string; hint
   );
 }
 
+const BLUEPRINT_CARD_I18N: Record<string, { label: string; btn: string; tooltip: string; hint: string }> = {
+  th: {
+    label: 'พิมพ์เขียวแพลตฟอร์ม AI',
+    btn: 'คลิกดู ➔',
+    tooltip: 'คลิกเพื่อดูรายละเอียด 4 ขุมพลังหลักและพิมพ์เขียว Enterprise AI Platform',
+    hint: 'gateway, orchestration, audit, model-provider-routing',
+  },
+  en: {
+    label: 'AI Platform Blueprint',
+    btn: 'View ➔',
+    tooltip: 'Click to view the 4 Core Capabilities & Enterprise AI Platform Blueprint',
+    hint: 'gateway, orchestration, audit, model-provider-routing',
+  },
+  zh: {
+    label: 'AI 平台蓝图',
+    btn: '查看 ➔',
+    tooltip: '点击查看 4 大核心能力与企业级 AI 平台蓝图',
+    hint: '网关接入, 智能编排, 审计治理, 模型路由',
+  },
+  ja: {
+    label: 'AI プラットフォーム設計図',
+    btn: '表示 ➔',
+    tooltip: 'クリックして 4 つのコア機能とエンタープライズ AI プラットフォーム設計図を表示',
+    hint: 'ゲートウェイ, オーケストレーション, 監査統制, モデルルーティング',
+  },
+  my: {
+    label: 'AI ပလက်ဖောင်း ပုံစံကြမ်း',
+    btn: 'ကြည့်ရန် ➔',
+    tooltip: 'အဓိကစွမ်းဆောင်ရည် ၄ ရပ်နှင့် AI ပလက်ဖောင်း ပုံစံကြမ်းကို ကြည့်ရန် နှိပ်ပါ',
+    hint: 'gateway, orchestration, audit, model-provider-routing',
+  },
+};
+
 function DeveloperPortal({ overview, onRoadmap, onOpen, onConnect }: { overview: Overview; onRoadmap: () => void; onOpen: (view: DetailKind) => void; onConnect: () => void }) {
-  const { t, formatNumber } = useTranslation();
+  const { t, language, formatNumber } = useTranslation();
   const [credential] = useCredential();
   const connected = credential !== '';
   const platform = usePlatform();
@@ -547,6 +586,8 @@ function DeveloperPortal({ overview, onRoadmap, onOpen, onConnect }: { overview:
   const available = models.data?.models.filter((entry) => entry.available).length ?? 0;
   const total = models.data?.models.length ?? 0;
   const computeStatus = compute.data?.status;
+
+  const bpCard = BLUEPRINT_CARD_I18N[language] ?? BLUEPRINT_CARD_I18N.th;
 
   return (
     <>
@@ -590,11 +631,23 @@ function DeveloperPortal({ overview, onRoadmap, onOpen, onConnect }: { overview:
           value={platform.data?.environment ?? '—'}
           hint={platform.data ? t('stat.environment.hint', { version: platform.data.version }) : t('stat.environment.hintEmpty')}
         />
-        <Stat
-          label={t('stat.capabilities')}
-          value={platform.data ? String(platform.data.capabilities.length).padStart(2, '0') : '—'}
-          hint={platform.data?.capabilities.join(', ') ?? t('stat.capabilities.hintEmpty')}
-        />
+        <article
+          className="stat-card clickable-stat-card"
+          onClick={() => onOpen('capabilities')}
+          title={bpCard.tooltip}
+          style={{ cursor: 'pointer' }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontWeight: 700, color: '#00d2ff' }}>{bpCard.label}</span>
+            <span style={{ fontSize: '0.72rem', color: '#00d2ff', fontWeight: 700, background: 'rgba(0, 210, 255, 0.15)', padding: '2px 6px', borderRadius: '4px' }}>
+              {bpCard.btn}
+            </span>
+          </div>
+          <strong style={{ color: '#00d2ff' }}>
+            {platform.data ? String(platform.data.capabilities.length).padStart(2, '0') : '04'}
+          </strong>
+          <small>{bpCard.hint}</small>
+        </article>
         <Stat
           label={t('stat.models')}
           value={connected && models.isSuccess ? `${formatNumber(available)}/${formatNumber(total)}` : '—'}
@@ -740,6 +793,17 @@ function DetailPage({ kind, onBack }: { kind: DetailKind; onBack: () => void }) 
             ['erp-analyst-secure (v1.1)', 'คำสั่งสำหรับสรุปรายงานและวิเคราะห์ข้อมูลบัญชี/สต็อกสินค้าจากระบบ ERP', 'PROMPT'],
             ['data-governance-guard (v1.0)', 'คำสั่งกำกับด้านความปลอดภัย ตรวจสอบการส่งออกข้อมูลลับก่อนประมวลผล', 'PROMPT'],
             ['text-to-sql-analyst (v1.3)', 'คำสั่งสร้าง SQL แบบ Read-Only พร้อมระบบป้องกันคำสั่งอันตราย (Blocklist)', 'PROMPT'],
+          ],
+        };
+      default:
+        return {
+          intro: 'สถาปัตยกรรมและรายละเอียดพิมพ์เขียวระดับองค์กร',
+          count: '4 ขุมพลังหลัก (Core Capabilities)',
+          items: [
+            ['AI Gateway & Ingress', 'จุดเชื่อมต่อเดี่ยว, การรักษาความปลอดภัย, Scope & Authentication, Rate Limit, Token Quota', 'GATEWAY'],
+            ['AI Orchestration & Agents', 'ระบบประมวลผลอัจฉริยะ, Agentic RAG, Text-to-SQL, Multi-Step ReAct Loop', 'ORCHESTRATION'],
+            ['Audit, Logging & Governance', 'บันทึก Log ละเอียดทุก Turn, Usage Events, Data Permission, Company Filtering', 'AUDIT'],
+            ['Model Provider Routing', 'สลับ/กระจายงานระหว่าง Small / Medium / Large LLMs, Local GPU & Cloud AI', 'ROUTING'],
           ],
         };
     }

@@ -6,6 +6,8 @@
 export type DetailKind =
   | 'rules'
   | 'architecture'
+  | 'capabilities'
+  | 'blueprint'
   | 'api'
   | 'module'
   | 'event'
