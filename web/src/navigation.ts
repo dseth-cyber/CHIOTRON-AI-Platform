@@ -33,6 +33,6 @@ export type View =
   | DetailKind;
 
 /** Which conversation, or which assistant, the chat page should open with. */
-export type ChatTarget = { conversationId?: string; assistant?: string };
+export type ChatTarget = { conversationId?: string; assistant?: string; prompt?: string };
 
 export type Navigate = (view: View, target?: ChatTarget) => void;

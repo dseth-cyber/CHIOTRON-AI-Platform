@@ -113,10 +113,13 @@ export function ChatWorkspace({
       setConversationId(target.conversationId);
       hydratedFor.current = null;
     }
+    if (target?.prompt) {
+      setPrompt(target.prompt);
+    }
     if (target?.assistant !== undefined && target.assistant !== '') {
       setAssistant(target.assistant);
     }
-  }, [target]);
+  }, [target?.conversationId, target?.prompt, conversationId, target?.assistant]);
 
   // Set default assistant if none is selected
   useEffect(() => {

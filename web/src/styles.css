@@ -557,16 +557,34 @@ html.theme-glassmorphism {
   color: #ffffff;
   position: relative;
 }
+
 html.theme-glassmorphism::before {
   content: "";
   position: fixed;
-  inset: 0;
-  background-image: 
-    linear-gradient(to right, rgba(255, 255, 255, 0.045) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(255, 255, 255, 0.045) 1px, transparent 1px);
-  background-size: 32px 32px;
+  inset: -40% 0 -40% 0;
+  background: 
+    radial-gradient(ellipse at 50% 80%, rgba(0, 210, 255, 0.16) 0%, transparent 55%),
+    radial-gradient(ellipse at 30% 60%, rgba(168, 85, 247, 0.18) 0%, transparent 45%),
+    radial-gradient(ellipse at 70% 40%, rgba(139, 92, 246, 0.16) 0%, transparent 50%);
   pointer-events: none;
   z-index: 0;
+  animation: oceanWavePulse 18s ease-in-out infinite alternate;
+  filter: blur(60px);
+}
+
+@keyframes oceanWavePulse {
+  0% {
+    transform: translateY(15%) scale(1);
+    opacity: 0.5;
+  }
+  50% {
+    transform: translateY(-5%) scale(1.12, 1.06);
+    opacity: 0.85;
+  }
+  100% {
+    transform: translateY(-25%) scale(1.02);
+    opacity: 0.6;
+  }
 }
 html.theme-glassmorphism .app-shell {
   background: transparent;
@@ -660,6 +678,12 @@ html.theme-glassmorphism .governance-card:hover {
   background: rgba(255, 255, 255, 0.07);
   box-shadow: 0 16px 40px rgba(0, 210, 255, 0.15), 0 0 20px rgba(168, 85, 247, 0.25);
   transform: translateY(-2px);
+}
+html.theme-glassmorphism .gemini-dropdown-panel {
+  background: rgba(28, 18, 56, 0.96) !important;
+  border: 1px solid rgba(255, 255, 255, 0.22) !important;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.7), 0 0 25px rgba(139, 92, 246, 0.25) !important;
+  backdrop-filter: blur(32px) !important;
 }
 html.theme-glassmorphism .scope-table li {
   background: rgba(255, 255, 255, 0.04);
@@ -2121,21 +2145,21 @@ html.theme-light .upload-hint-text code {
 /* Dropdown Panels */
 .gemini-dropdown-panel {
   position: absolute;
-  top: 100%;
+  top: calc(100% + 8px);
   left: 12px;
-  background: #150f28;
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: #1c1438;
+  border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: 14px;
-  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.65), 0 0 20px rgba(0, 210, 255, 0.12);
   padding: 8px;
-  z-index: 50;
-  min-width: 280px;
-  backdrop-filter: blur(20px);
+  z-index: 9999;
+  min-width: 290px;
+  backdrop-filter: blur(28px);
 }
 .gemini-dropdown-panel.bottom-up {
   top: auto;
-  bottom: 100%;
-  margin-bottom: 8px;
+  bottom: calc(100% + 8px);
+  margin-bottom: 0;
 }
 .dropdown-title {
   font-size: 0.72rem;
@@ -2392,6 +2416,8 @@ html.theme-light .hero-custom-icon-anim {
 .gemini-omnibar-wrapper {
   width: 100%;
   margin-top: 10px;
+  position: relative;
+  z-index: 200;
 }
 .gemini-omnibar {
   display: flex;
@@ -2405,6 +2431,7 @@ html.theme-light .hero-custom-icon-anim {
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
   transition: all 0.2s ease;
   position: relative;
+  z-index: 200;
   width: 100%;
   box-sizing: border-box;
 }
@@ -2521,6 +2548,8 @@ html.theme-light .hero-custom-icon-anim {
   gap: 12px;
   width: 100%;
   margin-top: 10px;
+  position: relative;
+  z-index: 1;
 }
 .gemini-prompt-card {
   display: flex;
@@ -4893,5 +4922,179 @@ html.theme-glassmorphism .orb-core {
 }
 .theme-light .thinking-bar {
   background: #0284c7;
+}
+
+/* ==========================================================================
+   Enterprise AI Platform Home Dashboard & AI Insights
+   ========================================================================== */
+.home-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+.role-badge-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 9999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  background: rgba(139, 92, 246, 0.2);
+  border: 1px solid rgba(192, 132, 252, 0.35);
+  color: #c084fc;
+}
+.dashboard-view-switcher {
+  display: inline-flex;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  padding: 3px;
+  gap: 4px;
+}
+.dashboard-view-switcher button {
+  padding: 5px 12px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  border: 0;
+  background: transparent;
+  color: #cbd5e1;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.dashboard-view-switcher button.active {
+  background: linear-gradient(135deg, #00d2ff 0%, #3a7bd5 100%);
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(0, 210, 255, 0.3);
+}
+
+.conversation-meta-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.72rem;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: rgba(0, 210, 255, 0.12);
+  color: #22d3ee;
+  border: 1px solid rgba(0, 210, 255, 0.25);
+  font-weight: 600;
+}
+
+.insight-section {
+  margin-top: 28px;
+  margin-bottom: 20px;
+}
+.insight-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+}
+.insight-section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #ffffff;
+  margin: 0;
+}
+.insight-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+}
+.insight-card {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 12px;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  position: relative;
+  overflow: hidden;
+}
+.insight-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(0, 210, 255, 0.4);
+  background: rgba(255, 255, 255, 0.075);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25), 0 0 15px rgba(0, 210, 255, 0.1);
+}
+.insight-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+.insight-icon-box {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+.insight-icon-box.alert {
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #f87171;
+}
+.insight-icon-box.chart {
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  color: #34d399;
+}
+.insight-icon-box.doc {
+  background: rgba(59, 130, 246, 0.15);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  color: #60a5fa;
+}
+.insight-icon-box.action {
+  background: rgba(245, 158, 11, 0.15);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  color: #fbbf24;
+}
+.insight-card-body h3 {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #f8fafc;
+  margin: 0 0 4px;
+}
+.insight-card-body p {
+  font-size: 0.82rem;
+  color: #94a3b8;
+  margin: 0;
+  line-height: 1.4;
+}
+.insight-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #22d3ee;
+  background: rgba(0, 210, 255, 0.08);
+  border: 1px solid rgba(0, 210, 255, 0.2);
+  padding: 6px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  width: fit-content;
+  align-self: flex-start;
+}
+.insight-action-btn:hover {
+  background: rgba(0, 210, 255, 0.18);
+  border-color: #00d2ff;
+  color: #ffffff;
 }
 

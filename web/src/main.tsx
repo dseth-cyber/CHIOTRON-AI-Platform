@@ -26,6 +26,7 @@ import { Create } from './pages/Create';
 import { Providers } from './pages/Providers';
 import { EnterpriseBlueprint } from './pages/EnterpriseBlueprint';
 import { PromptLibrary } from './pages/PromptLibrary';
+import { OceanWaveGrid } from './components/OceanWaveGrid';
 
 type PhaseStatus = 'complete' | 'active' | 'planned';
 /**
@@ -361,6 +362,7 @@ function App() {
 
   return (
     <div className={`app-shell ${collapsed ? 'sidebar-collapsed' : ''}`}>
+      <OceanWaveGrid />
       {/* Mobile Top App Bar (Sleek and Minimalist) */}
       <header className="mobile-top-bar">
         <button
