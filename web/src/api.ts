@@ -3,7 +3,7 @@
 // The portal talks to the Control Plane and nothing else; it never addresses a
 // model provider directly (ARCHITECTURE-v1 section 2).
 
-const BASE = (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080').replace(/\/+$/, '');
+const BASE = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/+$/, '');
 
 // The credential lives in sessionStorage so it dies with the tab. This is the
 // development bridge until the Identity Service issues JWTs to the portal; a
