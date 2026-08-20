@@ -337,6 +337,7 @@ type RouteParams struct {
 	ProviderSlug  string
 	UpstreamModel string
 	IsDefault     bool
+	Enabled       *bool
 	CompanyID     string
 	CreatedBy     string
 }
@@ -375,17 +376,23 @@ func (s *Store) SaveRoute(ctx context.Context, params RouteParams) (Route, error
 		}
 	}
 
+	enabledVal := true
+	if params.Enabled != nil {
+		enabledVal = *params.Enabled
+	}
+
 	row := tx.QueryRow(ctx, `
-		INSERT INTO model_routes (logical, provider_slug, upstream_model, is_default, company_id, created_by)
-		VALUES ($1, $2, $3, $4, nullif($5, ''), $6)
+		INSERT INTO model_routes (logical, provider_slug, upstream_model, is_default, enabled, company_id, created_by)
+		VALUES ($1, $2, $3, $4, $5, nullif($6, ''), $7)
 		ON CONFLICT (logical) WHERE deleted_at IS NULL DO UPDATE SET
 			provider_slug = excluded.provider_slug,
 			upstream_model = excluded.upstream_model,
 			is_default = excluded.is_default,
+			enabled = excluded.enabled,
 			updated_at = now()
 		RETURNING `+routeColumns,
 		params.Logical, params.ProviderSlug, params.UpstreamModel,
-		params.IsDefault, params.CompanyID, params.CreatedBy)
+		params.IsDefault, enabledVal, params.CompanyID, params.CreatedBy)
 
 	record, err := scanRoute(row)
 	if err != nil {

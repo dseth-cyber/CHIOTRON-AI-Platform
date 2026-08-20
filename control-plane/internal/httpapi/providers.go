@@ -63,6 +63,7 @@ type routeBody struct {
 	Provider  string `json:"provider"`
 	Model     string `json:"model"`
 	IsDefault bool   `json:"default,omitempty"`
+	Enabled   *bool  `json:"enabled,omitempty"`
 	CompanyID string `json:"companyId,omitempty"`
 }
 
@@ -244,7 +245,7 @@ func registerProviders(mux *http.ServeMux, d Deps) {
 		}
 		record, err := d.Providers.SaveRoute(r.Context(), compute.RouteParams{
 			Logical: body.Logical, ProviderSlug: body.Provider, UpstreamModel: body.Model,
-			IsDefault: body.IsDefault, CompanyID: body.CompanyID, CreatedBy: caller.KeyID,
+			IsDefault: body.IsDefault, Enabled: body.Enabled, CompanyID: body.CompanyID, CreatedBy: caller.KeyID,
 		})
 		if err != nil {
 			d.writeProviderError(w, err, "save route")
@@ -252,7 +253,7 @@ func registerProviders(mux *http.ServeMux, d Deps) {
 		}
 		d.reload(r, caller, "route.saved", record.Logical, map[string]any{
 			"provider": record.ProviderSlug, "model": record.UpstreamModel,
-			"default": record.IsDefault,
+			"default": record.IsDefault, "enabled": record.Enabled,
 		})
 		writeJSON(w, http.StatusOK, map[string]any{"route": record})
 	}))

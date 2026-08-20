@@ -28,8 +28,104 @@ import { SCOPE_ADMIN_KEYS } from '../Connection';
  * needs a redeploy. Adding a cloud provider during development and switching
  * back to the local GPU afterwards is two edits on this page.
  */
+
+const CLASSIFICATION_I18N: Record<string, Record<string, string>> = {
+  th: {
+    public: 'สาธารณะ (Public)',
+    internal: 'ภายใน (Internal)',
+    restricted: 'จำกัดสิทธิ์ (Restricted)',
+    confidential: 'ลับเฉพาะ (Confidential)',
+  },
+  en: {
+    public: 'Public',
+    internal: 'Internal',
+    restricted: 'Restricted',
+    confidential: 'Confidential',
+  },
+  zh: {
+    public: '公开 (Public)',
+    internal: '内部 (Internal)',
+    restricted: '受限 (Restricted)',
+    confidential: '机密 (Confidential)',
+  },
+  ja: {
+    public: '公開 (Public)',
+    internal: '社内 (Internal)',
+    restricted: '制限 (Restricted)',
+    confidential: '機密 (Confidential)',
+  },
+  my: {
+    public: 'အများသုံး (Public)',
+    internal: 'အတွင်းပိုင်း (Internal)',
+    restricted: 'ကန့်သတ် (Restricted)',
+    confidential: 'လျှို့ဝှက် (Confidential)',
+  },
+};
+
+const STATUS_I18N: Record<string, Record<string, string>> = {
+  th: {
+    available: 'พร้อมใช้งาน (Available)',
+    unreachable: 'ไม่สามารถติดต่อได้',
+    degraded: 'ประสิทธิภาพลดลง',
+    disabled: 'ปิดใช้งาน',
+    checking: 'กำลังตรวจสอบ...',
+  },
+  en: {
+    available: 'Available',
+    unreachable: 'Unreachable',
+    degraded: 'Degraded',
+    disabled: 'Disabled',
+    checking: 'Checking...',
+  },
+  zh: {
+    available: '可用 (Available)',
+    unreachable: '不可达',
+    degraded: '性能受损',
+    disabled: '已禁用',
+    checking: '正在检查...',
+  },
+  ja: {
+    available: '利用可能 (Available)',
+    unreachable: '接続不可',
+    degraded: 'パフォーマンス低下',
+    disabled: '無効',
+    checking: '確認中...',
+  },
+  my: {
+    available: 'အသုံးပြုနိုင်သည် (Available)',
+    unreachable: 'မချိတ်ဆက်နိုင်ပါ',
+    degraded: 'စွမ်းဆောင်ရည်ကျဆင်း',
+    disabled: 'ပိတ်ထားသည်',
+    checking: 'စစ်ဆေးနေသည်...',
+  },
+};
+
+function getModelSize(modelName: string): string {
+  const m = modelName.toLowerCase();
+  if (m.includes('qwen3:8b') || m.includes('qwen3-8b')) return '5.2 GB';
+  if (m.includes('qwen3:4b') || m.includes('qwen3-4b')) return '2.5 GB';
+  if (m.includes('qwen3:0.6b') || m.includes('qwen3-0.6b') || m.includes('qwen3:0.5b')) return '522 MB';
+  if (m.includes('qwen2.5:0.5b') || m.includes('qwen2.5-0.5b')) return '397 MB';
+  if (m.includes('qwen2.5:7b') || m.includes('qwen2.5-7b')) return '4.7 GB';
+  if (m.includes('qwen2.5:14b') || m.includes('qwen2.5-14b')) return '9.0 GB';
+  if (m.includes('nomic-embed')) return '274 MB';
+  if (m.includes('llama3:8b') || m.includes('llama3.1:8b')) return '4.7 GB';
+  if (m.includes('mistral')) return '4.1 GB';
+  if (m.includes('deepseek-r1:8b')) return '4.9 GB';
+  if (m.includes('deepseek-r1:1.5b')) return '1.1 GB';
+  return 'Local GPU';
+}
+
+/**
+ * Model providers and the routing table.
+ *
+ * ARCHITECTURE-v1 sections 46 and 53: which backend answers a logical model is
+ * configuration an operator changes here, not an environment variable that
+ * needs a redeploy. Adding a cloud provider during development and switching
+ * back to the local GPU afterwards is two edits on this page.
+ */
 export function Providers() {
-  const { t, formatDate } = useTranslation();
+  const { t, formatDate, language } = useTranslation();
   const { has } = useScopes();
   const canAdmin = has(SCOPE_ADMIN_KEYS);
   const registry = useProviderRegistry(canAdmin);
@@ -73,6 +169,32 @@ export function Providers() {
     }
   };
 
+  const toggleRoute = async (record: ModelRoute) => {
+    setError('');
+    try {
+      await saveRoute({
+        logical: record.logical,
+        provider: record.provider,
+        model: record.model,
+        default: record.default,
+        enabled: !record.enabled,
+      });
+      refresh();
+    } catch (failed) {
+      setError(failed instanceof Error ? failed.message : t('providers.error.save'));
+    }
+  };
+
+  const formatClassification = (val: string) => {
+    const locMap = CLASSIFICATION_I18N[language] ?? CLASSIFICATION_I18N.th;
+    return locMap[val.toLowerCase()] || val;
+  };
+
+  const formatStatus = (val: string) => {
+    const locMap = STATUS_I18N[language] ?? STATUS_I18N.th;
+    return locMap[val.toLowerCase()] || val;
+  };
+
   const providerColumns: Column<ComputeProvider>[] = [
     {
       key: 'name',
@@ -107,7 +229,9 @@ export function Providers() {
       header: t('providers.column.ceiling'),
       sortValue: (row) => row.maxClassification,
       cell: (row) => (
-        <Tag tone={toneFor(classificationTone, row.maxClassification)}>{row.maxClassification}</Tag>
+        <Tag tone={toneFor(classificationTone, row.maxClassification)}>
+          {formatClassification(row.maxClassification)}
+        </Tag>
       ),
     },
     {
@@ -116,11 +240,15 @@ export function Providers() {
       sortValue: (row) => row.lastStatus ?? '',
       cell: (row) => {
         const live = checked[row.slug];
-        const status = live?.status ?? row.lastStatus;
+        const rawStatus = live?.status ?? row.lastStatus;
         return (
           <span className="cell-stack">
-            {!row.enabled && <Tag tone="warn">{t('providers.disabled')}</Tag>}
-            {status && <Tag tone={toneFor(statusTone, status)}>{status}</Tag>}
+            {!row.enabled && <Tag tone="warn">{formatStatus('disabled')}</Tag>}
+            {rawStatus && (
+              <Tag tone={toneFor(statusTone, rawStatus)}>
+                {formatStatus(rawStatus)}
+              </Tag>
+            )}
             {(live?.error || row.lastError) && (
               <small className="warn">{live?.error || row.lastError}</small>
             )}
@@ -141,8 +269,20 @@ export function Providers() {
           <button className="secondary" onClick={() => setEditing(row)}>
             {t('providers.edit')}
           </button>
-          <button className="secondary" onClick={() => void toggle(row)}>
-            {row.enabled ? t('providers.disable') : t('providers.enable')}
+          <button
+            type="button"
+            className={`ui-toggle-switch ${row.enabled ? 'active' : ''}`}
+            onClick={() => void toggle(row)}
+            title={row.enabled ? t('providers.disable') : t('providers.enable')}
+          >
+            <span className="ui-toggle-track">
+              <span className="ui-toggle-thumb" />
+            </span>
+            <span className="ui-toggle-label">
+              {row.enabled
+                ? (language === 'th' ? 'เปิด (ON)' : language === 'zh' ? '开启 (ON)' : language === 'ja' ? '有効 (ON)' : language === 'my' ? 'ဖွင့် (ON)' : 'ON')
+                : (language === 'th' ? 'ปิด (OFF)' : language === 'zh' ? '关闭 (OFF)' : language === 'ja' ? '無効 (OFF)' : language === 'my' ? 'ပိတ် (OFF)' : 'OFF')}
+            </span>
           </button>
           <button className="danger-button" onClick={() => setRemoving(row)}>
             {t('action.delete')}
@@ -177,18 +317,61 @@ export function Providers() {
       ),
     },
     {
+      key: 'size',
+      header:
+        language === 'th'
+          ? 'ขนาดโมเดล'
+          : language === 'zh'
+          ? '模型大小'
+          : language === 'ja'
+          ? 'モデルサイズ'
+          : language === 'my'
+          ? 'Model အရွယ်အစား'
+          : 'Model Size',
+      sortValue: (row) => row.model,
+      cell: (row) => (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+          <span style={{ fontSize: '0.85rem' }}>💾</span>
+          <code style={{ color: '#00d2ff', fontWeight: 700, fontSize: '0.86rem' }}>
+            {getModelSize(row.model)}
+          </code>
+        </span>
+      ),
+    },
+    {
       key: 'ceiling',
       header: t('providers.column.ceiling'),
       cell: (row) => {
         const owner = providers.find((entry) => entry.slug === row.provider);
         return owner ? (
           <Tag tone={toneFor(classificationTone, owner.maxClassification)}>
-            {owner.maxClassification}
+            {formatClassification(owner.maxClassification)}
           </Tag>
         ) : (
           <Tag tone="danger">{t('providers.missingProvider')}</Tag>
         );
       },
+    },
+    {
+      key: 'status',
+      header: t('providers.column.status'),
+      cell: (row) => (
+        <button
+          type="button"
+          className={`ui-toggle-switch ${row.enabled ? 'active' : ''}`}
+          onClick={() => void toggleRoute(row)}
+          title={row.enabled ? t('providers.disable') : t('providers.enable')}
+        >
+          <span className="ui-toggle-track">
+            <span className="ui-toggle-thumb" />
+          </span>
+          <span className="ui-toggle-label">
+            {row.enabled
+              ? (language === 'th' ? 'เปิด (ON)' : language === 'zh' ? '开启 (ON)' : language === 'ja' ? '有効 (ON)' : language === 'my' ? 'ဖွင့် (ON)' : 'ON')
+              : (language === 'th' ? 'ปิด (OFF)' : language === 'zh' ? '关闭 (OFF)' : language === 'ja' ? '無効 (OFF)' : language === 'my' ? 'ပိတ် (OFF)' : 'OFF')}
+          </span>
+        </button>
+      ),
     },
     {
       key: 'actions',

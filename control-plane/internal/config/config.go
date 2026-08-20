@@ -177,7 +177,7 @@ func Load(getenv func(string) string, version string) (Config, error) {
 	if cfg.ReadinessTimeout, err = durationVar(getenv, "READINESS_TIMEOUT", 2*time.Second); err != nil {
 		fail("%v", err)
 	}
-	if cfg.ComputeTimeout, err = durationVar(getenv, "COMPUTE_TIMEOUT", 120*time.Second); err != nil {
+	if cfg.ComputeTimeout, err = durationVar(getenv, "COMPUTE_TIMEOUT", 300*time.Second); err != nil {
 		fail("%v", err)
 	}
 	if cfg.ComputeHealthTimeout, err = durationVar(getenv, "COMPUTE_HEALTH_TIMEOUT", 5*time.Second); err != nil {

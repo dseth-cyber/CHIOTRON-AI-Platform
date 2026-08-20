@@ -440,7 +440,7 @@ export async function deleteProvider(slug: string): Promise<void> {
 export const checkProvider = (slug: string) =>
   send<ProviderCheck>('POST', `/api/v1/admin/providers/${encodeURIComponent(slug)}/check`);
 
-export const saveRoute = (route: { logical: string; provider: string; model: string; default?: boolean }) =>
+export const saveRoute = (route: { logical: string; provider: string; model: string; default?: boolean; enabled?: boolean }) =>
   send<{ route: ModelRoute }>('PUT', '/api/v1/admin/routes', route);
 
 export async function deleteRoute(logical: string): Promise<void> {

@@ -103,17 +103,44 @@ func NewRegistry(routes []Route, defaultLogical string, providers ...LLM) (*Regi
 	return registry, nil
 }
 
-// Resolve selects the provider and upstream model for a logical id. An empty
-// id resolves to the configured default.
+// Resolve selects the provider and upstream model for a logical id. If the
+// requested logical route is disabled or unknown, it gracefully falls back
+// to the next available tier or the configured default model.
 func (r *Registry) Resolve(logical string) (LLM, Route, error) {
 	if logical == "" {
 		logical = r.defaultLogical
 	}
-	route, ok := r.routes[logical]
-	if !ok {
-		return nil, Route{}, fmt.Errorf("%w: %q", ErrUnknownModel, logical)
+	if route, ok := r.routes[logical]; ok {
+		return r.providers[route.Provider], route, nil
 	}
-	return r.providers[route.Provider], route, nil
+
+	// Smart Multi-Tier Fallback: If a tier is disabled, route to the next
+	// closest active tier (e.g. fast disabled -> rag -> reasoning).
+	tierFallbacks := map[string][]string{
+		"fast":      {"rag", "reasoning"},
+		"rag":       {"reasoning", "fast"},
+		"reasoning": {"rag", "fast"},
+	}
+
+	if candidates, exists := tierFallbacks[logical]; exists {
+		for _, nextTier := range candidates {
+			if nextRoute, ok := r.routes[nextTier]; ok {
+				return r.providers[nextRoute.Provider], nextRoute, nil
+			}
+		}
+	}
+
+	// Fallback to default configured route
+	if defRoute, ok := r.routes[r.defaultLogical]; ok {
+		return r.providers[defRoute.Provider], defRoute, nil
+	}
+
+	// If any enabled route is present, pick the first available
+	for _, anyRoute := range r.routes {
+		return r.providers[anyRoute.Provider], anyRoute, nil
+	}
+
+	return nil, Route{}, fmt.Errorf("%w: %q", ErrUnknownModel, logical)
 }
 
 // Permits reports whether content of the given classification may be sent to

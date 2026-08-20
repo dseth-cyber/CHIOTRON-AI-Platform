@@ -47,9 +47,9 @@ services:
       # to change one thing is one too many.
       COMPUTE_PROVIDER: ${COMPUTE_PROVIDER:-ollama}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
-      MODEL_ROUTES: ${MODEL_ROUTES:-default=ollama/qwen2.5:0.5b}
-      DEFAULT_MODEL: ${DEFAULT_MODEL:-default}
-      COMPUTE_TIMEOUT: ${COMPUTE_TIMEOUT:-120s}
+      MODEL_ROUTES: ${MODEL_ROUTES:-reasoning=ollama/qwen3:8b,rag=ollama/qwen3:4b,fast=ollama/qwen3:0.6b}
+      DEFAULT_MODEL: ${DEFAULT_MODEL:-reasoning}
+      COMPUTE_TIMEOUT: ${COMPUTE_TIMEOUT:-300s}
       COMPUTE_HEALTH_TIMEOUT: ${COMPUTE_HEALTH_TIMEOUT:-5s}
       DEFAULT_RATE_LIMIT_PER_MINUTE: ${DEFAULT_RATE_LIMIT_PER_MINUTE:-60}
       # Conversation retention and prompt logging are policy settings.

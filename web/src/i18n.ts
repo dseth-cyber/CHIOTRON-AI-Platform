@@ -8,13 +8,13 @@
 // locale is missing a string. That is deliberate: a silent fallback to English
 // in one language is the failure mode this design exists to prevent.
 
-export const LANGUAGES = ['en', 'th', 'zh', 'ja', 'my'] as const;
+export const LANGUAGES = ['th', 'en', 'zh', 'ja', 'my'] as const;
 export type Language = (typeof LANGUAGES)[number];
 
 /** Endonyms: a language picker is useless to someone who cannot read it. */
 export const LANGUAGE_NAMES: Record<Language, string> = {
-  en: 'English',
   th: 'ไทย',
+  en: 'English',
   zh: '中文',
   ja: '日本語',
   my: 'မြန်မာ',
@@ -2970,18 +2970,12 @@ function isLanguage(value: string | null): value is Language {
   return value !== null && (LANGUAGES as readonly string[]).includes(value);
 }
 
-/** Reads a stored choice, otherwise the closest browser preference. */
+/** Reads a stored choice, otherwise defaults to Thai ('th'). */
 export function detectLanguage(): Language {
   const stored = localStorage.getItem(STORAGE_KEY);
   if (isLanguage(stored)) return stored;
 
-  for (const preferred of navigator.languages ?? [navigator.language]) {
-    // Match on the base tag so `zh-Hant` and `en-US` still resolve.
-    const base = preferred.toLowerCase().split('-')[0];
-    if (base === 'zh' || base === 'ja' || base === 'th' || base === 'en') return base;
-    if (base === 'my' || base === 'mya' || base === 'bur') return 'my';
-  }
-  return 'en';
+  return 'th';
 }
 
 export function storeLanguage(language: Language): void {
