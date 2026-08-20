@@ -25,6 +25,7 @@ import { Analyze } from './pages/Analyze';
 import { Create } from './pages/Create';
 import { Providers } from './pages/Providers';
 import { EnterpriseBlueprint } from './pages/EnterpriseBlueprint';
+import { PromptLibrary } from './pages/PromptLibrary';
 
 type PhaseStatus = 'complete' | 'active' | 'planned';
 /**
@@ -516,7 +517,8 @@ function App() {
         {view === 'portal' && <DeveloperPortal overview={overview} onRoadmap={() => setView('roadmap')} onOpen={setView} onConnect={() => setShowConnect(true)} />}
         {view === 'roadmap' && <Roadmap phases={phases} overview={overview} expanded={expanded} setExpanded={setExpanded} onUpdate={setShowUpdate} onAdd={() => setShowAdd(true)} onReset={resetPhases} />}
         {(view === 'capabilities' || view === 'blueprint') && <EnterpriseBlueprint onBack={() => setView('portal')} />}
-        {isDetailPage(view) && view !== 'capabilities' && view !== 'blueprint' && <DetailPage kind={view} onBack={() => setView('portal')} />}
+        {view === 'prompts' && <PromptLibrary onBack={() => setView('portal')} />}
+        {isDetailPage(view) && view !== 'capabilities' && view !== 'blueprint' && view !== 'prompts' && <DetailPage kind={view} onBack={() => setView('portal')} />}
       </main>
 
       {showConnect && <ConnectDialog onClose={() => setShowConnect(false)} />}

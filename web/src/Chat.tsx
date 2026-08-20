@@ -50,7 +50,7 @@ export function ChatWorkspace({
   onConnect: () => void;
   onNavigate: Navigate;
 }) {
-  const { t, formatNumber } = useTranslation();
+  const { t, formatNumber, language } = useTranslation();
   const { customIcon } = useBrandIcon();
   const assistants = useAssistants(true);
   const favorites = useFavorites(true);
@@ -74,6 +74,26 @@ export function ChatWorkspace({
   const [liveState, setLiveState] = useState<'idle' | 'listening' | 'thinking' | 'speaking'>('idle');
   const [liveUserText, setLiveUserText] = useState('');
   const [liveAssistantReply, setLiveAssistantReply] = useState('');
+  const [thinkingElapsed, setThinkingElapsed] = useState<number>(0);
+  const thinkingTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (streaming) {
+      const startTime = Date.now();
+      setThinkingElapsed(0);
+      thinkingTimerRef.current = window.setInterval(() => {
+        setThinkingElapsed((Date.now() - startTime) / 1000);
+      }, 100);
+    } else {
+      if (thinkingTimerRef.current) {
+        clearInterval(thinkingTimerRef.current);
+        thinkingTimerRef.current = null;
+      }
+    }
+    return () => {
+      if (thinkingTimerRef.current) clearInterval(thinkingTimerRef.current);
+    };
+  }, [streaming]);
 
   const detail = useConversation(conversationId);
   const abort = useRef<AbortController | null>(null);
@@ -740,7 +760,16 @@ export function ChatWorkspace({
                     </svg>
                   </button>
 
-                  {prompt.trim() && (
+                  {streaming ? (
+                    <button
+                      type="button"
+                      className="omnibar-stop-btn"
+                      onClick={() => abort.current?.abort()}
+                      title="หยุดการตอบกลับ"
+                    >
+                      ⏹
+                    </button>
+                  ) : prompt.trim() ? (
                     <button
                       type="button"
                       className="omnibar-send-btn ready"
@@ -750,7 +779,7 @@ export function ChatWorkspace({
                     >
                       ➤
                     </button>
-                  )}
+                  ) : null}
                 </div>
               </div>
               {isListening && (
@@ -797,14 +826,66 @@ export function ChatWorkspace({
                       {turn.role === 'user' ? 'คุณ (You)' : selected?.name ?? 'ผู้ช่วย AI'}
                     </span>
                   </div>
-                  <div className="message-content">
-                    {turn.redacted ? (
-                      <i className="redacted">{t('chat.notStored')}</i>
-                    ) : (
-                      turn.content
-                    )}
-                    {streaming && index === turns.length - 1 && <span className="gemini-caret" />}
-                  </div>
+
+                  {/* AI Thinking Animation State (When waiting for initial tokens / reasoning) */}
+                  {turn.role === 'assistant' && !turn.content && streaming && index === turns.length - 1 ? (
+                    <div className="ai-thinking-card">
+                      <div className="ai-thinking-head">
+                        <div className="ai-thinking-orb">
+                          <span className="sparkle-pulse">✨</span>
+                        </div>
+                        <div className="ai-thinking-text-group">
+                          <div className="ai-thinking-status-row">
+                            <span className="ai-thinking-status-label">
+                              {language === 'en'
+                                ? 'Thinking and reasoning...'
+                                : language === 'zh'
+                                ? '正在深入思考并生成回答...'
+                                : language === 'ja'
+                                ? '思考中・回答を生成しています...'
+                                : language === 'my'
+                                ? 'စဉ်းစားတွေးခေါ်၍ အဖြေထုတ်နေပါသည်...'
+                                : 'กำลังคิดและประมวลผลคำตอบ...'}
+                            </span>
+                            <span className="ai-thinking-timer-pill">
+                              ⏱ {thinkingElapsed.toFixed(1)}s
+                            </span>
+                          </div>
+                          <p className="ai-thinking-subhint">
+                            {language === 'en'
+                              ? 'Accessing models, analyzing context & computing optimal response'
+                              : language === 'zh'
+                              ? '正在分析上下文、组织逻辑并生成结构化回答'
+                              : language === 'ja'
+                              ? 'コンテキストを分析し、最適な回答を論理的に構成しています'
+                              : language === 'my'
+                              ? 'အကြောင်းအရာများကို ခွဲခြမ်းစိတ်ဖြာပြီး အကောင်းဆုံး အဖြေကို ပြင်ဆင်နေပါသည်'
+                              : 'กำลังวิเคราะห์บริบท สืบค้นข้อมูล และประมวลผลคำตอบ'}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Shimmering Animated Wave Bars */}
+                      <div className="ai-thinking-bars">
+                        <span className="thinking-bar b1" />
+                        <span className="thinking-bar b2" />
+                        <span className="thinking-bar b3" />
+                        <span className="thinking-bar b4" />
+                        <span className="thinking-bar b5" />
+                        <span className="thinking-bar b6" />
+                        <span className="thinking-bar b7" />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="message-content">
+                      {turn.redacted ? (
+                        <i className="redacted">{t('chat.notStored')}</i>
+                      ) : (
+                        turn.content
+                      )}
+                      {streaming && index === turns.length - 1 && <span className="gemini-caret" />}
+                    </div>
+                  )}
 
                   {/* Assistant Message Actions & Usage Metrics */}
                   {turn.role === 'assistant' && turn.content && (
