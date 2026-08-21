@@ -19,7 +19,8 @@ import { useTranslation } from '../LanguageContext';
 import { LANGUAGES, LANGUAGE_NAMES, type Language } from '../i18n';
 import { classificationTone, statusTone, toneFor } from '../theme';
 import { SCOPE_ADMIN_KEYS, SCOPE_MODELS_READ } from '../Connection';
-import { updatePlatformSetting } from '../api';
+import { updatePlatformSetting, createApiKey, revokeApiKey } from '../api';
+import { useApiKeys, useRefreshApiKeys } from '../hooks';
 
 /** Every scope the platform defines, so a key can be read against the whole list. */
 const ALL_SCOPES = [
@@ -52,6 +53,8 @@ export function Settings({ onConnect }: { onConnect: () => void }) {
   const settingsQuery = usePlatformSettings(canAdmin);
   const promptsQuery = usePromptTemplates(credential !== '');
   const refreshSettings = useRefreshSettings();
+  const apiKeysQuery = useApiKeys(canAdmin);
+  const refreshApiKeys = useRefreshApiKeys();
 
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [editValue, setEditValue] = useState<string>('');
@@ -63,6 +66,19 @@ export function Settings({ onConnect }: { onConnect: () => void }) {
   const [newKey, setNewKey] = useState<string>('');
   const [newValue, setNewValue] = useState<string>('true');
   const [newDesc, setNewDesc] = useState<string>('');
+
+  // Break-Glass API Key States
+  const [showKeyModal, setShowKeyModal] = useState<boolean>(false);
+  const [keyCreatedSecret, setKeyCreatedSecret] = useState<string | null>(null);
+  const [keyCopied, setKeyCopied] = useState<boolean>(false);
+  const [keyName, setKeyName] = useState<string>('Emergency-Break-Glass-Admin');
+  const [keyPreset, setKeyPreset] = useState<'breakglass' | 'dept' | 'custom'>('breakglass');
+  const [keyDepartment, setKeyDepartment] = useState<string>('IT-Operations');
+  const [keyClearance, setKeyClearance] = useState<string>('restricted');
+  const [keyRateLimit, setKeyRateLimit] = useState<number>(120);
+  const [selectedScopes, setSelectedScopes] = useState<string[]>([...ALL_SCOPES]);
+  const [keyBusy, setKeyBusy] = useState<boolean>(false);
+  const [keyError, setKeyError] = useState<string>('');
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -128,6 +144,67 @@ export function Settings({ onConnect }: { onConnect: () => void }) {
       console.error('Failed to add setting', err);
     } finally {
       setSaveBusy(false);
+    }
+  };
+
+  const handleSelectPreset = (preset: 'breakglass' | 'dept' | 'custom') => {
+    setKeyPreset(preset);
+    if (preset === 'breakglass') {
+      setKeyName('Emergency-Break-Glass-Admin');
+      setSelectedScopes([...ALL_SCOPES]);
+      setKeyClearance('restricted');
+      setKeyRateLimit(120);
+    } else if (preset === 'dept') {
+      setKeyName('Dept-Fallback-Key');
+      setSelectedScopes(['models:read', 'assistants:read', 'chat:completions', 'knowledge:read']);
+      setKeyClearance('internal');
+      setKeyRateLimit(60);
+    }
+  };
+
+  const handleToggleScope = (scope: string) => {
+    setSelectedScopes((prev) =>
+      prev.includes(scope) ? prev.filter((s) => s !== scope) : [...prev, scope],
+    );
+  };
+
+  const handleCreateKey = async () => {
+    if (!keyName.trim()) return;
+    setKeyBusy(true);
+    setKeyError('');
+    try {
+      const res = await createApiKey({
+        name: keyName.trim(),
+        scopes: selectedScopes,
+        department: keyDepartment.trim() || undefined,
+        maxClassification: keyClearance,
+        rateLimitPerMinute: keyRateLimit || 60,
+      });
+      refreshApiKeys();
+      if (res?.secret) {
+        setKeyCreatedSecret(res.secret);
+      }
+      setKeyName('Emergency-Break-Glass-Admin');
+      setShowKeyModal(false);
+    } catch (err: any) {
+      setKeyError(err?.message || 'สร้างกุญแจไม่สำเร็จ');
+    } finally {
+      setKeyBusy(false);
+    }
+  };
+
+  const handleRevokeKey = async (id: string, name: string) => {
+    if (
+      !confirm(
+        `คุณแน่ใจหรือไม่ว่าต้องการเพิกถอนกุญแจ "${name}" ทันที? (เมื่อเพิกถอนแล้วจะไม่สามารถใช้กุญแจนี้เข้าใช้งานระบบได้อีก)`,
+      )
+    )
+      return;
+    try {
+      await revokeApiKey(id);
+      refreshApiKeys();
+    } catch (err: any) {
+      alert(`เพิกถอนไม่สำเร็จ: ${err?.message || 'ข้อผิดพลาด'}`);
     }
   };
 
@@ -456,6 +533,136 @@ export function Settings({ onConnect }: { onConnect: () => void }) {
         </section>
       )}
 
+      {/* Break-Glass Emergency Keys & API Keys Management */}
+      {canAdmin && (
+        <section className="panel">
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: '8px',
+              flexWrap: 'wrap',
+              gap: '8px',
+            }}
+          >
+            <div>
+              <span className="panel-label">
+                🔑 กุญแจฉุกเฉินและ API Keys (Break-Glass & Local Auth Fallback)
+              </span>
+              <p className="history-hint" style={{ margin: '4px 0 0' }}>
+                ระบบกุญแจสำรองสำหรับเข้าใช้งานแพลตฟอร์มโดยตรงในภาวะฉุกเฉิน (เช่น กรณีระบบ ERP หรือ SSO กลางขัดข้อง) เพื่อให้ทีม IT และผู้ดูแลเข้าใช้งาน AI และคลังความรู้ได้ต่อเนื่อง 100%
+              </p>
+            </div>
+            <button
+              type="button"
+              className="primary"
+              onClick={() => {
+                setShowKeyModal(true);
+                setKeyError('');
+              }}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+                borderColor: '#f59e0b',
+                color: '#ffffff',
+                fontWeight: 700,
+              }}
+            >
+              🚨＋ สร้างกุญแจฉุกเฉิน (Break-Glass Key)
+            </button>
+          </div>
+
+          {apiKeysQuery.isLoading ? (
+            <p className="history-hint">{t('table.loading')}</p>
+          ) : (apiKeysQuery.data ?? []).length === 0 ? (
+            <p className="history-hint">ยังไม่มีกุญแจ API ในระบบ (สามารถกดสร้างกุญแจฉุกเฉินได้ทันที)</p>
+          ) : (
+            <div className="table-wrap">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>ชื่อกุญแจ (Key Name)</th>
+                    <th>คำนำหน้า (Prefix)</th>
+                    <th>สิทธิ์ที่ได้รับ (Granted Scopes)</th>
+                    <th>แผนก / ชั้นความลับ</th>
+                    <th>สถานะ</th>
+                    <th style={{ textAlign: 'right' }}>การจัดการ</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(apiKeysQuery.data ?? []).map((keyItem) => {
+                    const isRevoked = !!keyItem.revokedAt;
+                    return (
+                      <tr key={keyItem.id} style={{ opacity: isRevoked ? 0.55 : 1 }}>
+                        <td>
+                          <div className="cell-stack">
+                            <b style={{ color: isRevoked ? '#94a3b8' : '#f8fafc' }}>{keyItem.name}</b>
+                            <small style={{ color: '#94a3b8' }}>
+                              สร้างเมื่อ: {new Date(keyItem.createdAt).toLocaleString('th-TH')}
+                            </small>
+                          </div>
+                        </td>
+                        <td>
+                          <code>{keyItem.prefix}…</code>
+                        </td>
+                        <td>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', maxWidth: '340px' }}>
+                            {keyItem.scopes.map((s) => (
+                              <span
+                                key={s}
+                                style={{
+                                  fontSize: '0.7rem',
+                                  padding: '2px 6px',
+                                  borderRadius: '4px',
+                                  background: s.startsWith('admin:') ? 'rgba(239, 68, 68, 0.2)' : 'rgba(0, 210, 255, 0.15)',
+                                  color: s.startsWith('admin:') ? '#fca5a5' : '#67e8f9',
+                                  border: s.startsWith('admin:') ? '1px solid rgba(239, 68, 68, 0.3)' : '1px solid rgba(0, 210, 255, 0.25)',
+                                  fontWeight: 600,
+                                }}
+                              >
+                                {s}
+                              </span>
+                            ))}
+                          </div>
+                        </td>
+                        <td>
+                          <div className="cell-stack">
+                            <span>{keyItem.department || 'ส่วนกลาง (All)'}</span>
+                            <small style={{ color: '#fbbf24' }}>
+                              ชั้นความลับ: {keyItem.maxClassification || 'public'} · {keyItem.rateLimitPerMinute} req/min
+                            </small>
+                          </div>
+                        </td>
+                        <td>
+                          <Tag tone={isRevoked ? 'danger' : 'ok'}>
+                            {isRevoked ? 'เพิกถอนแล้ว (Revoked)' : 'พร้อมใช้งาน (Active)'}
+                          </Tag>
+                        </td>
+                        <td style={{ textAlign: 'right' }}>
+                          {!isRevoked && (
+                            <button
+                              type="button"
+                              className="secondary"
+                              style={{ color: '#f87171', borderColor: 'rgba(239, 68, 68, 0.4)', fontSize: '0.78rem', padding: '4px 8px' }}
+                              onClick={() => void handleRevokeKey(keyItem.id, keyItem.name)}
+                            >
+                              เพิกถอนกุญแจ
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      )}
+
       {/* Add New Setting Modal Dialog */}
       {showAddModal && (
         <Modal title="เพิ่มการตั้งค่าแพลตฟอร์ม (Add Platform Setting)" onClose={() => setShowAddModal(false)}>
@@ -543,6 +750,162 @@ export function Settings({ onConnect }: { onConnect: () => void }) {
               </button>
               <button className="primary" onClick={handleAddNewSetting} disabled={saveBusy || !newKey.trim()}>
                 {saveBusy ? 'กำลังบันทึก...' : t('settings.save')}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Break-Glass Key Creation Modal */}
+      {showKeyModal && (
+        <Modal title="🚨 สร้างกุญแจฉุกเฉิน / Break-Glass API Key" onClose={() => setShowKeyModal(false)}>
+          <div style={{ display: 'grid', gap: '16px' }}>
+            <div style={{ padding: '12px 14px', borderRadius: '10px', background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.25)', color: '#fde68a', fontSize: '0.85rem', lineHeight: 1.5 }}>
+              💡 <b>Break-Glass Key</b> คือกุญแจสำรองความปลอดภัยระดับสูงที่ทำงานโดยตรงกับ Go Gateway ของ AI Platform เพื่อให้องค์กรสามารถใช้งาน AI และค้นหาเอกสารได้ต่อเนื่อง 100% แม้ระบบ ERP / SSO กลางจะดับหรือล่ม
+            </div>
+
+            <label className="field">
+              <span>เลือกรูปแบบเทมเพลตกุญแจ (Preset)</span>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '8px', marginTop: '4px' }}>
+                <button
+                  type="button"
+                  className={`theme-select-card ${keyPreset === 'breakglass' ? 'active' : ''}`}
+                  style={{ padding: '10px 12px', minHeight: 'auto', textAlign: 'left' }}
+                  onClick={() => handleSelectPreset('breakglass')}
+                >
+                  <b style={{ color: '#fbbf24' }}>🚨 Emergency Admin</b>
+                  <small style={{ display: 'block', fontSize: '0.72rem' }}>สิทธิ์เต็มทุกด้านสำหรับกู้คืนระบบฉุกเฉิน</small>
+                </button>
+                <button
+                  type="button"
+                  className={`theme-select-card ${keyPreset === 'dept' ? 'active' : ''}`}
+                  style={{ padding: '10px 12px', minHeight: 'auto', textAlign: 'left' }}
+                  onClick={() => handleSelectPreset('dept')}
+                >
+                  <b style={{ color: '#67e8f9' }}>🏢 แผนกสำรอง (General)</b>
+                  <small style={{ display: 'block', fontSize: '0.72rem' }}>ใช้งานแชทและค้นคลังความรู้</small>
+                </button>
+                <button
+                  type="button"
+                  className={`theme-select-card ${keyPreset === 'custom' ? 'active' : ''}`}
+                  style={{ padding: '10px 12px', minHeight: 'auto', textAlign: 'left' }}
+                  onClick={() => handleSelectPreset('custom')}
+                >
+                  <b style={{ color: '#cbd5e1' }}>⚙️ กำหนดเอง (Custom)</b>
+                  <small style={{ display: 'block', fontSize: '0.72rem' }}>เลือกสิทธิ์รายบุคคลตามต้องการ</small>
+                </button>
+              </div>
+            </label>
+
+            <label className="field">
+              <span>ชื่อกุญแจ (Key Name)</span>
+              <input
+                type="text"
+                className="input-text"
+                placeholder="เช่น Emergency-Break-Glass-Admin"
+                value={keyName}
+                onChange={(e) => setKeyName(e.target.value)}
+              />
+            </label>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <label className="field">
+                <span>แผนกที่สังกัด (Department)</span>
+                <input
+                  type="text"
+                  className="input-text"
+                  placeholder="เช่น IT-Operations"
+                  value={keyDepartment}
+                  onChange={(e) => setKeyDepartment(e.target.value)}
+                />
+              </label>
+              <label className="field">
+                <span>โควตาคำขอ (Rate Limit / min)</span>
+                <input
+                  type="number"
+                  className="input-text"
+                  value={keyRateLimit}
+                  onChange={(e) => setKeyRateLimit(Number(e.target.value))}
+                />
+              </label>
+            </div>
+
+            <label className="field">
+              <span>สิทธิ์การเข้าถึง (Scopes)</span>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '6px', maxHeight: '140px', overflowY: 'auto', padding: '8px', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)' }}>
+                {ALL_SCOPES.map((s) => {
+                  const checked = selectedScopes.includes(s);
+                  return (
+                    <label key={s} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => handleToggleScope(s)}
+                      />
+                      <code>{s}</code>
+                    </label>
+                  );
+                })}
+              </div>
+            </label>
+
+            {keyError && <p className="error-note">{keyError}</p>}
+
+            <div className="modal-actions">
+              <button className="secondary" onClick={() => setShowKeyModal(false)} disabled={keyBusy}>
+                {t('action.cancel')}
+              </button>
+              <button
+                className="primary"
+                onClick={handleCreateKey}
+                disabled={keyBusy || !keyName.trim() || selectedScopes.length === 0}
+                style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)', borderColor: '#f59e0b', color: '#ffffff' }}
+              >
+                {keyBusy ? 'กำลังสร้างกุญแจ...' : '✨ ยืนยันสร้างกุญแจฉุกเฉิน'}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Secret Key Reveal Modal */}
+      {keyCreatedSecret && (
+        <Modal title="🚨 กุญแจฉุกเฉินถูกสร้างสำเร็จแล้ว (Break-Glass Key Created)" onClose={() => { setKeyCreatedSecret(null); setKeyCopied(false); }}>
+          <div style={{ display: 'grid', gap: '16px' }}>
+            <div style={{ padding: '14px', borderRadius: '10px', background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.35)', color: '#fca5a5', fontSize: '0.88rem', lineHeight: 1.5 }}>
+              ⚠️ <b>คำเตือนด้านความปลอดภัย:</b> กุญแจนี้จะปรากฏให้เห็น<b>เพียงครั้งเดียวเท่านั้น</b> กรุณาคัดลอกและบันทึกเก็บไว้ในที่ปลอดภัย (เช่น ตู้เซฟรหัสผ่านของฝ่าย IT) เพื่อใช้เป็นกุญแจสำรองสำหรับเข้าสู่ระบบเมื่อระบบ ERP หรือ SSO ภายนอกไม่พร้อมใช้งาน
+            </div>
+
+            <label className="field">
+              <span>รหัสกุญแจ API Secret (Raw Key):</span>
+              <div style={{ position: 'relative', marginTop: '6px' }}>
+                <pre style={{ margin: 0, padding: '14px 16px', background: 'rgba(0, 0, 0, 0.6)', border: '1px solid rgba(0, 210, 255, 0.4)', borderRadius: '10px', color: '#00d2ff', fontSize: '0.9rem', wordBreak: 'break-all', whiteSpace: 'pre-wrap', fontFamily: 'monospace' }}>
+                  {keyCreatedSecret}
+                </pre>
+              </div>
+            </label>
+
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '8px' }}>
+              <button
+                type="button"
+                className="primary"
+                onClick={async () => {
+                  await navigator.clipboard.writeText(keyCreatedSecret);
+                  setKeyCopied(true);
+                }}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+              >
+                {keyCopied ? '✓ คัดลอกสำเร็จแล้ว!' : '📋 คัดลอกรหัสกุญแจ'}
+              </button>
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => {
+                  setKeyCreatedSecret(null);
+                  setKeyCopied(false);
+                }}
+              >
+                ปิดหน้าต่าง
               </button>
             </div>
           </div>

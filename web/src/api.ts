@@ -469,6 +469,37 @@ export const fetchPlatformSettings = (signal?: AbortSignal) =>
 export const updatePlatformSetting = (key: string, value: any, description?: string) =>
   send<PlatformSetting>('PUT', `/api/v1/admin/settings/${encodeURIComponent(key)}`, { value, description });
 
+export type ApiKeyRecord = {
+  id: string;
+  name: string;
+  prefix: string;
+  scopes: string[];
+  companyId?: string;
+  department?: string;
+  maxClassification?: string;
+  rateLimitPerMinute: number;
+  createdAt: string;
+  createdBy?: string;
+  expiresAt?: string;
+  revokedAt?: string;
+};
+
+export const fetchApiKeys = (signal?: AbortSignal) =>
+  get<ApiKeyRecord[]>('/api/v1/admin/api-keys', signal);
+
+export const createApiKey = (input: {
+  name: string;
+  scopes: string[];
+  companyId?: string;
+  department?: string;
+  maxClassification?: string;
+  rateLimitPerMinute?: number;
+  expiresAt?: string;
+}) => send<{ record: ApiKeyRecord; secret: string }>('POST', '/api/v1/admin/api-keys', input);
+
+export const revokeApiKey = (id: string) =>
+  send<{ record: ApiKeyRecord }>('POST', `/api/v1/admin/api-keys/${encodeURIComponent(id)}/revoke`);
+
 export type PromptTemplate = {
   id: string;
   slug: string;

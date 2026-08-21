@@ -9,6 +9,7 @@ import {
   fetchDocuments,
   fetchFavorites,
   fetchIdentity,
+  fetchApiKeys,
   fetchModels,
   fetchPlatform,
   fetchPlatformSettings,
@@ -17,6 +18,7 @@ import {
   readCredential,
   setFavorite,
   writeCredential,
+  type ApiKeyRecord,
   type Assistant,
   type ComputeHealth,
   type ConversationDetail,
@@ -270,6 +272,23 @@ export function useRefreshPrompts(): () => void {
   }, [queryClient]);
 }
 
+export function useApiKeys(enabled: boolean): UseQueryResult<ApiKeyRecord[], Error> {
+  const [credential] = useCredential();
+  return useQuery<ApiKeyRecord[], Error>({
+    queryKey: ['admin-api-keys', credential],
+    queryFn: ({ signal }) => fetchApiKeys(signal),
+    enabled: enabled && credential !== '',
+    retry: retryUnlessClientError,
+  });
+}
+
+export function useRefreshApiKeys(): () => void {
+  const queryClient = useQueryClient();
+  return useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: ['admin-api-keys'] });
+  }, [queryClient]);
+}
+
 /**
  * Scope checks drive what the UI offers. This is convenience only: the backend
  * authorizes every action regardless of what the portal chose to show
@@ -280,3 +299,4 @@ export function useScopes(): { scopes: string[]; has: (scope: string) => boolean
   const scopes = identity.data?.scopes ?? [];
   return { scopes, has: (scope: string) => scopes.includes(scope) };
 }
+
