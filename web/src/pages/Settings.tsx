@@ -67,6 +67,13 @@ export function Settings({ onConnect }: { onConnect: () => void }) {
   const [newValue, setNewValue] = useState<string>('true');
   const [newDesc, setNewDesc] = useState<string>('');
 
+  const callerClearance = identity.data?.maxClassification || 'public';
+  const CLASSIFICATION_ORDER = ['public', 'internal', 'confidential', 'restricted'];
+  const callerLevelIndex = CLASSIFICATION_ORDER.indexOf(callerClearance);
+  const allowedClearances = CLASSIFICATION_ORDER.filter(
+    (_, idx) => idx <= (callerLevelIndex >= 0 ? callerLevelIndex : 0),
+  );
+
   // Break-Glass API Key States
   const [showKeyModal, setShowKeyModal] = useState<boolean>(false);
   const [keyCreatedSecret, setKeyCreatedSecret] = useState<string | null>(null);
@@ -74,7 +81,7 @@ export function Settings({ onConnect }: { onConnect: () => void }) {
   const [keyName, setKeyName] = useState<string>('Emergency-Break-Glass-Admin');
   const [keyPreset, setKeyPreset] = useState<'breakglass' | 'dept' | 'custom'>('breakglass');
   const [keyDepartment, setKeyDepartment] = useState<string>('IT-Operations');
-  const [keyClearance, setKeyClearance] = useState<string>('restricted');
+  const [keyClearance, setKeyClearance] = useState<string>(callerClearance);
   const [keyRateLimit, setKeyRateLimit] = useState<number>(120);
   const [selectedScopes, setSelectedScopes] = useState<string[]>([...ALL_SCOPES]);
   const [keyBusy, setKeyBusy] = useState<boolean>(false);
@@ -152,12 +159,12 @@ export function Settings({ onConnect }: { onConnect: () => void }) {
     if (preset === 'breakglass') {
       setKeyName('Emergency-Break-Glass-Admin');
       setSelectedScopes([...ALL_SCOPES]);
-      setKeyClearance('restricted');
+      setKeyClearance(callerClearance);
       setKeyRateLimit(120);
     } else if (preset === 'dept') {
       setKeyName('Dept-Fallback-Key');
       setSelectedScopes(['models:read', 'assistants:read', 'chat:completions', 'knowledge:read']);
-      setKeyClearance('internal');
+      setKeyClearance(callerClearance);
       setKeyRateLimit(60);
     }
   };
@@ -177,7 +184,7 @@ export function Settings({ onConnect }: { onConnect: () => void }) {
         name: keyName.trim(),
         scopes: selectedScopes,
         department: keyDepartment.trim() || undefined,
-        maxClassification: keyClearance,
+        maxClassification: keyClearance || callerClearance,
         rateLimitPerMinute: keyRateLimit || 60,
       });
       refreshApiKeys();
@@ -187,7 +194,12 @@ export function Settings({ onConnect }: { onConnect: () => void }) {
       setKeyName('Emergency-Break-Glass-Admin');
       setShowKeyModal(false);
     } catch (err: any) {
-      setKeyError(err?.message || 'สร้างกุญแจไม่สำเร็จ');
+      const msg = err?.message || '';
+      if (msg.includes('clearance above own')) {
+        setKeyError(`ไม่สามารถกำหนดชั้นความลับเกินกว่าสิทธิ์ของคีย์ที่คุณถืออยู่ (${callerClearance.toUpperCase()})`);
+      } else {
+        setKeyError(msg || 'สร้างกุญแจไม่สำเร็จ');
+      }
     } finally {
       setKeyBusy(false);
     }
@@ -809,7 +821,7 @@ export function Settings({ onConnect }: { onConnect: () => void }) {
               />
             </label>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px' }}>
               <label className="field">
                 <span>แผนกที่สังกัด (Department)</span>
                 <input
@@ -821,7 +833,21 @@ export function Settings({ onConnect }: { onConnect: () => void }) {
                 />
               </label>
               <label className="field">
-                <span>โควตาคำขอ (Rate Limit / min)</span>
+                <span>ชั้นความลับ (Clearance)</span>
+                <select
+                  className="input-text"
+                  value={keyClearance}
+                  onChange={(e) => setKeyClearance(e.target.value)}
+                >
+                  {allowedClearances.map((lvl) => (
+                    <option key={lvl} value={lvl}>
+                      {lvl.toUpperCase()}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="field">
+                <span>โควตา (Rate Limit / min)</span>
                 <input
                   type="number"
                   className="input-text"
