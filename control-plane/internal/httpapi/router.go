@@ -14,6 +14,7 @@ import (
 
 	"github.com/chiotron/ai-control-plane/internal/auth"
 	"github.com/chiotron/ai-control-plane/internal/config"
+	"github.com/chiotron/ai-control-plane/internal/portal"
 	"github.com/chiotron/ai-control-plane/internal/provider"
 	"github.com/chiotron/ai-control-plane/internal/telemetry"
 )
@@ -180,6 +181,9 @@ func NewRouter(d Deps) http.Handler {
 	registerAdmin(mux, d)
 	registerSettings(mux, d)
 	registerPrompts(mux, d)
+
+	// Single Go Binary: Serve embedded Portal Web UI for all non-API routes
+	mux.Handle("/", portal.Handler())
 
 	// Ordering matters, outermost first:
 	//   recoverPanic  - nothing below it can take the process down

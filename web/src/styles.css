@@ -5098,3 +5098,74 @@ html.theme-glassmorphism .orb-core {
   color: #ffffff;
 }
 
+/* ==========================================================================
+   Analyze Workspace: Drag & Drop Zone & File Previews
+   ========================================================================== */
+.analyze-dropzone {
+  border: 2px dashed rgba(255, 255, 255, 0.2);
+  border-radius: 18px;
+  padding: 32px 24px;
+  text-align: center;
+  background: rgba(255, 255, 255, 0.03);
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+.analyze-dropzone:hover,
+.analyze-dropzone.dragging {
+  border-color: #00d2ff;
+  background: rgba(0, 210, 255, 0.06);
+  box-shadow: 0 0 25px rgba(0, 210, 255, 0.25), 0 10px 30px rgba(0, 0, 0, 0.2);
+  transform: translateY(-2px);
+}
+.dropzone-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+.dropzone-icon {
+  font-size: 2.5rem;
+  line-height: 1;
+}
+.dropzone-text h3 {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #ffffff;
+  margin: 0 0 6px;
+}
+.dropzone-text p {
+  font-size: 0.85rem;
+  color: #94a3b8;
+  margin: 0;
+}
+.dropzone-badges {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+.dropzone-badge {
+  font-size: 0.75rem;
+  padding: 4px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #cbd5e1;
+  font-weight: 600;
+}
+.file-preview-bar {
+  margin-top: 20px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: left;
+}
+
+

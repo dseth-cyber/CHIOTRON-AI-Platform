@@ -103,6 +103,9 @@ export function ChatWorkspace({
   const recognitionRef = useRef<any>(null);
   const liveRecognitionRef = useRef<any>(null);
   const isLiveActiveRef = useRef(false);
+  const isPausedRef = useRef(false);
+  const liveSpokenTextRef = useRef('');
+  const silenceTimeoutRef = useRef<number | null>(null);
   const hydratedFor = useRef<string | null>(null);
 
   isLiveActiveRef.current = isLiveMode;
@@ -282,6 +285,8 @@ export function ChatWorkspace({
       return;
     }
 
+    isLiveActiveRef.current = true;
+    isPausedRef.current = false;
     setIsLiveMode(true);
     setLiveUserText('');
     setLiveAssistantReply('');
@@ -289,6 +294,12 @@ export function ChatWorkspace({
   };
 
   const stopLiveMode = () => {
+    isLiveActiveRef.current = false;
+    isPausedRef.current = false;
+    if (silenceTimeoutRef.current) {
+      clearTimeout(silenceTimeoutRef.current);
+      silenceTimeoutRef.current = null;
+    }
     setIsLiveMode(false);
     setLiveState('idle');
     try {
@@ -300,57 +311,104 @@ export function ChatWorkspace({
     setSpeakingIndex(null);
   };
 
+  const toggleLivePause = () => {
+    if (liveState === 'listening') {
+      isPausedRef.current = true;
+      if (silenceTimeoutRef.current) {
+        clearTimeout(silenceTimeoutRef.current);
+        silenceTimeoutRef.current = null;
+      }
+      try {
+        liveRecognitionRef.current?.abort?.();
+      } catch {}
+      setLiveState('idle');
+    } else if (liveState === 'speaking') {
+      isPausedRef.current = true;
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+      setSpeakingIndex(null);
+      setLiveState('idle');
+    } else {
+      // Resume listening
+      isPausedRef.current = false;
+      startLiveListening();
+    }
+  };
+
   const startLiveListening = () => {
-    if (!isLiveActiveRef.current && isLiveMode === false) return;
+    if (!isLiveActiveRef.current || isPausedRef.current) return;
     const SpeechRecognition =
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) return;
+
+    if (silenceTimeoutRef.current) {
+      clearTimeout(silenceTimeoutRef.current);
+      silenceTimeoutRef.current = null;
+    }
 
     try {
       liveRecognitionRef.current?.abort?.();
     } catch {}
 
     setLiveState('listening');
-    setLiveUserText('');
+    liveSpokenTextRef.current = '';
 
     try {
       const recognition = new SpeechRecognition();
       recognition.lang = 'th-TH';
-      recognition.continuous = false;
+      recognition.continuous = true;
       recognition.interimResults = true;
 
-      let finalCapturedText = '';
-
       recognition.onresult = (event: any) => {
-        let interim = '';
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          const item = event.results[i];
-          if (item) {
-            interim += item[0].transcript;
-            if (item.isFinal) finalCapturedText += item[0].transcript;
+        if (isPausedRef.current || !isLiveActiveRef.current) return;
+
+        let fullTranscript = '';
+        for (let i = 0; i < event.results.length; i++) {
+          const res = event.results[i];
+          if (res && res[0]) {
+            fullTranscript += res[0].transcript;
           }
         }
-        setLiveUserText(interim || finalCapturedText);
+
+        const trimmed = fullTranscript.trim();
+        if (trimmed) {
+          liveSpokenTextRef.current = trimmed;
+          setLiveUserText(trimmed);
+
+          // Reset silence timer: trigger AI reply after 1.2s of silence
+          if (silenceTimeoutRef.current) {
+            clearTimeout(silenceTimeoutRef.current);
+          }
+          silenceTimeoutRef.current = window.setTimeout(() => {
+            if (isLiveActiveRef.current && !isPausedRef.current && liveSpokenTextRef.current) {
+              const textToSend = liveSpokenTextRef.current;
+              liveSpokenTextRef.current = '';
+              try {
+                recognition.stop();
+              } catch {}
+              void sendLiveMessage(textToSend);
+            }
+          }, 1200);
+        }
       };
 
       recognition.onerror = () => {
-        if (isLiveActiveRef.current) {
-          // Restart listening after short delay if silence/timeout
+        if (isLiveActiveRef.current && !isPausedRef.current && liveState === 'listening') {
           setTimeout(() => {
-            if (isLiveActiveRef.current && liveState === 'listening') {
+            if (isLiveActiveRef.current && !isPausedRef.current) {
               startLiveListening();
             }
-          }, 600);
+          }, 800);
         }
       };
 
       recognition.onend = () => {
-        const spokenText = (finalCapturedText || liveUserText).trim();
-        if (spokenText && isLiveActiveRef.current) {
-          void sendLiveMessage(spokenText);
-        } else if (isLiveActiveRef.current && liveState === 'listening') {
+        if (isLiveActiveRef.current && !isPausedRef.current && liveState === 'listening') {
           setTimeout(() => {
-            if (isLiveActiveRef.current) startLiveListening();
+            if (isLiveActiveRef.current && !isPausedRef.current && liveState === 'listening') {
+              startLiveListening();
+            }
           }, 300);
         }
       };
@@ -363,7 +421,23 @@ export function ChatWorkspace({
   };
 
   const sendLiveMessage = async (text: string) => {
-    if (!text.trim() || assistant === '') return;
+    const effectiveAssistant = assistant || assistants.data?.[0]?.slug || 'fast';
+    if (!text.trim() || !effectiveAssistant) {
+      if (isLiveActiveRef.current && !isPausedRef.current) {
+        startLiveListening();
+      }
+      return;
+    }
+
+    if (silenceTimeoutRef.current) {
+      clearTimeout(silenceTimeoutRef.current);
+      silenceTimeoutRef.current = null;
+    }
+
+    try {
+      liveRecognitionRef.current?.stop?.();
+    } catch {}
+
     setLiveState('thinking');
     setLiveAssistantReply('');
 
@@ -379,7 +453,7 @@ export function ChatWorkspace({
     try {
       await streamChat(
         {
-          assistant,
+          assistant: effectiveAssistant,
           conversationId: conversationId ?? undefined,
           message: text,
         },
@@ -413,24 +487,29 @@ export function ChatWorkspace({
             });
 
             // AI finishes text response -> speak aloud -> then resume listening!
-            if (isLiveActiveRef.current) {
+            if (isLiveActiveRef.current && !isPausedRef.current && fullReply.trim()) {
               setLiveState('speaking');
               speakText(fullReply, 9999, () => {
-                if (isLiveActiveRef.current) {
+                if (isLiveActiveRef.current && !isPausedRef.current) {
                   startLiveListening();
                 }
               });
+            } else if (isLiveActiveRef.current && !isPausedRef.current) {
+              startLiveListening();
             }
           },
         },
         abort.current.signal,
       );
-    } catch {
-      if (isLiveActiveRef.current) {
-        setLiveState('idle');
+    } catch (err: any) {
+      console.error('Live voice chat error:', err);
+      setLiveAssistantReply(`(เกิดข้อผิดพลาดในการประมวลผลคำตอบ: ${err?.message || 'โปรดลองใหม่อีกครั้ง'})`);
+      if (isLiveActiveRef.current && !isPausedRef.current) {
         setTimeout(() => {
-          if (isLiveActiveRef.current) startLiveListening();
-        }, 1000);
+          if (isLiveActiveRef.current && !isPausedRef.current) {
+            startLiveListening();
+          }
+        }, 2000);
       }
     }
   };
@@ -1097,15 +1176,9 @@ export function ChatWorkspace({
             <button
               type="button"
               className={`live-action-btn ${liveState === 'listening' ? 'active' : ''}`}
-              onClick={() => {
-                if (liveState === 'listening') {
-                  liveRecognitionRef.current?.stop();
-                } else {
-                  startLiveListening();
-                }
-              }}
+              onClick={toggleLivePause}
             >
-              {liveState === 'listening' ? '⏸ พักไมค์' : '🎙️ เริ่มพูด'}
+              {liveState === 'listening' ? '⏸ พักไมค์' : liveState === 'speaking' ? '⏹ หยุดพูด' : '🎙️ เริ่มพูด'}
             </button>
             <button type="button" className="live-end-btn" onClick={stopLiveMode}>
               ✕ สิ้นสุดการสนทนา

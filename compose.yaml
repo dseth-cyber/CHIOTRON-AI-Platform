@@ -107,18 +107,8 @@ services:
         condition: service_healthy
     ports:
       - "8080:8080"
+      - "5173:8080"
     networks: [control, compute]
-
-  portal:
-    build:
-      context: ./web
-      args:
-        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-}
-    depends_on:
-      - api
-    ports:
-      - "5173:80"
-    networks: [control]
 
   # Development-only observability. Production reuses the existing Prometheus,
   # Grafana, Loki and Tempo (ARCHITECTURE-v1 section 9) and loads the same

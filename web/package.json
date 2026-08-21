@@ -11,8 +11,10 @@
   },
   "dependencies": {
     "@tanstack/react-query": "^5.101.4",
+    "pdfjs-dist": "^6.2.108",
     "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "react-dom": "^19.2.8",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/react": "^19.2.18",

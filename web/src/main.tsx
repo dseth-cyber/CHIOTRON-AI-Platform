@@ -738,9 +738,9 @@ function DetailPage({ kind, onBack }: { kind: DetailKind; onBack: () => void }) 
       case 'module':
         return {
           intro: 'ขอบเขต Control Plane สถานะการทำงาน และการพึ่งพาซึ่งกันและกันของแต่ละ Subsystem',
-          count: '7 โมดูลหลักของระบบ (Core Subsystems)',
+          count: '7 โมดูลหลักของระบบ (Core Subsystems - ภาษา Go 100%)',
           items: [
-            ['HTTP Gateway & Ingress Core', 'ดูแล Endpoint ภายนอก, จัดการ mTLS, Rate Limiting และกระจายโหลดงาน · สถานะ: ACTIVE', 'ACTIVE'],
+            ['Single Go Binary & Ingress Core', 'รวม Web Portal เข้าสู่ Go Binary (//go:embed) พร้อมดูแล REST/SSE Gateway, Rate Limiting และ Auth Guard · สถานะ: ACTIVE', 'GO 100%'],
             ['Authentication & Scope Governor', 'ถอดรหัสและตรวจสอบความถูกต้องของ API Key / JWT Token พร้อมบังคับใช้นโยบาย Scope · สถานะ: ACTIVE', 'ACTIVE'],
             ['Compute Plane & Ollama Orchestrator', 'เชื่อมต่อกับ Ollama Daemon ในเครื่อง และ Cloud AI Adapters (OpenAI, Anthropic, Google) · สถานะ: ACTIVE', 'ACTIVE'],
             ['pgvector & Knowledge Pipeline', 'จัดเก็บและสืบค้น Vector Embeddings แบบ Multi-Tenant พร้อม HNSW Index · สถานะ: ACTIVE', 'ACTIVE'],
@@ -766,7 +766,7 @@ function DetailPage({ kind, onBack }: { kind: DetailKind; onBack: () => void }) 
           intro: 'เส้นทางการเรียกบริการแบบซิงโครนัสและอะซิงโครนัสที่อนุญาตระหว่างคอมโพเนนต์',
           count: '6 เส้นทางสถาปัตยกรรม (Service Topology Paths)',
           items: [
-            ['Web Portal ➔ HTTP Gateway', 'การเรียก API แบบ Synchronous REST/JSON และ Server-Sent Events (SSE)', 'REST / SSE'],
+            ['Unified Go Server (Port 8080 & 5173)', 'ให้บริการทั้ง Web Portal (Embedded) และ REST/JSON / Server-Sent Events (SSE) API ใน Go Process เดียว', 'SINGLE GO BINARY'],
             ['HTTP Gateway ➔ PostgreSQL 16 (pgvector)', 'เชื่อมต่อฐานข้อมูลเชิงสัมพันธ์และ Vector ผ่าน Connection Pool (pgx)', 'POSTGRESQL'],
             ['HTTP Gateway ➔ Redis 7', 'เชื่อมต่อหน่วยความจำ In-Memory เพื่อทำ Semantic Cache และ Rate Limit Counters', 'REDIS'],
             ['HTTP Gateway ➔ Compute Plane (Ollama / vLLM)', 'ส่งต่องานประมวลผล Local GPU Inference ผ่าน Internal LAN แบบ Synchronous', 'COMPUTE'],
