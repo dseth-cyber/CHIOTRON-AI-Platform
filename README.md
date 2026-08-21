@@ -1,27 +1,89 @@
 # CHIOTRON Enterprise AI Platform
 
-Development foundation for Node 4. The Docker composition mirrors the intended separation:
+> **Modern Enterprise AI Platform with Single Go Binary Architecture (Go 100%)**  
+> ปัญญาประดิษฐ์ระดับองค์กร: รวม AI Gateway, Multi-Tier Model Router, Vector RAG (pgvector), GraphRAG, Agent ReAct Engine, Security RBAC และ Web Portal ไว้ใน Go Binary เดียว
 
-- `portal`: unified User Portal entry point on `http://localhost:5173`
-- `api`: VM4-style Control Plane / AI Gateway entry point on `http://localhost:8080`
-- `postgres`: platform-owned PostgreSQL with pgvector
-- `redis`: cache and future queue coordination
-- `ollama`: VM5-style local Compute Plane, intentionally isolated from the host and enabled only with the `compute` profile
+---
 
-## Run locally
+## 🚀 คู่มือการติดตั้งและเริ่มต้นใช้งาน (Quick Start Guide)
 
+### 📋 ข้อกำหนดของระบบ (Prerequisites)
+- **Docker Desktop** (พร้อมเปิดใช้งาน WSL2 บน Windows หรือ Docker Engine บน Linux)
+- **NVIDIA GPU Driver & Container Toolkit** (กรณีต้องการรัน Local AI Model บนการ์ดจอ)
+- **RAM:** ขั้นต่ำ 8GB (แนะนำ 16GB+ หากรัน LLM ในเครื่อง)
+
+---
+
+### ⚡ 3 ขั้นตอนติดตั้งและรันระบบ (One-Command Setup)
+
+#### 1. คัดลอกไฟล์การตั้งค่า Environment (.env)
 ```powershell
 Copy-Item .env.example .env
-docker compose up --build -d
 ```
+*(หรือบน Linux/macOS: `cp .env.example .env`)*
 
-Start the local Compute Plane when wanted:
+#### 2. สั่งรันระบบหลัก (Single Go Binary Platform)
+```powershell
+docker compose up -d --build
+```
+ระบบจะทำการ Build และ Start เซอร์วิสทั้งหมดขึ้นมาโดยอัตโนมัติ:
+* **`api` (Single Go Binary):** ให้บริการทั้ง Web Portal และ AI Gateway บนพอร์ต `http://localhost:5173` และ `http://localhost:8080`
+* **`postgres` (PostgreSQL 16 + pgvector):** จัดการฐานข้อมูลและ Vector Embeddings
+* **`redis` (Redis 7):** จัดการ Semantic Cache และ Rate-Limit
 
+#### 3. เปิดใช้งาน Local Compute Plane (Ollama GPU Engine)
 ```powershell
 docker compose --profile compute up -d ollama
 ```
 
-Ollama and model credentials are deliberately never exposed to browsers.
+---
+
+### 🔑 การสร้าง Admin API Key และดาวน์โหลดโมเดล
+
+#### 1. สร้าง Admin API Key ครั้งแรก (Bootstrap Key)
+สร้างคีย์ผู้ดูแลระบบผ่าน Go CLI โดยตรง:
+```powershell
+docker compose exec api /control-plane apikey create --name "Admin Key" --admin
+```
+*(ระบบจะพิมพ์คีย์รูปแบบ `ceap_...` ออกมา ให้คัดลอกเก็บไว้สำหรับกรอกในหน้าเว็บ)*
+
+#### 2. ดาวน์โหลดโมเดล AI ภาษาไทย/อังกฤษ และ Embedding
+```powershell
+# ดาวน์โหลดโมเดล LLM ขนาดเล็กสำหรับทดสอบ (กิน VRAM ~1GB)
+docker compose exec ollama ollama pull qwen2.5:0.5b
+
+# ดาวน์โหลดโมเดล Embedding สำหรับค้นหาเอกสาร (RAG)
+docker compose exec ollama ollama pull nomic-embed-text
+```
+
+#### 3. เข้าใช้งานระบบผ่านเว็บเบราว์เซอร์
+* 🌐 **User Portal & AI Workspace:** [http://localhost:5173](http://localhost:5173) หรือ [http://localhost:8080](http://localhost:8080)
+* 📊 **ระบบตรวจสอบสถานะ (Health Check):** [http://localhost:8080/healthz](http://localhost:8080/healthz)
+* 📈 **ดัชนีชี้วัด (Prometheus Metrics):** [http://localhost:8080/metrics](http://localhost:8080/metrics)
+
+---
+
+## 🏗️ สถาปัตยกรรมระบบ (System Architecture)
+
+```
+[ Browser / Client ]
+        │
+        ▼ (Port 5173 / Port 8080)
+┌────────────────────────────────────────────────────────┐
+│  CHIOTRON Enterprise AI Platform (Single Go Binary)    │
+│  - Web Portal UI (Embedded via //go:embed)             │
+│  - AI Gateway & Model Router (Go 100%)                 │
+│  - Security, RBAC & Token Limiting (Go 100%)           │
+│  - Vector RAG & Knowledge Platform (Go 100%)           │
+│  - Agent Planner & Tool Registry (Go 100%)             │
+└───────────────────────┬────────────────────────────────┘
+                        │
+       ┌────────────────┴───────────────┐
+       ▼                                ▼
+[ PostgreSQL 16 + pgvector ]      [ Local Ollama GPU Engine ]
+```
+
+---
 
 ## Control Plane endpoints
 
