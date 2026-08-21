@@ -114,32 +114,6 @@ func (r *Registry) Resolve(logical string) (LLM, Route, error) {
 		return r.providers[route.Provider], route, nil
 	}
 
-	// Smart Multi-Tier Fallback: If a tier is disabled, route to the next
-	// closest active tier (e.g. fast disabled -> rag -> reasoning).
-	tierFallbacks := map[string][]string{
-		"fast":      {"rag", "reasoning"},
-		"rag":       {"reasoning", "fast"},
-		"reasoning": {"rag", "fast"},
-	}
-
-	if candidates, exists := tierFallbacks[logical]; exists {
-		for _, nextTier := range candidates {
-			if nextRoute, ok := r.routes[nextTier]; ok {
-				return r.providers[nextRoute.Provider], nextRoute, nil
-			}
-		}
-	}
-
-	// Fallback to default configured route
-	if defRoute, ok := r.routes[r.defaultLogical]; ok {
-		return r.providers[defRoute.Provider], defRoute, nil
-	}
-
-	// If any enabled route is present, pick the first available
-	for _, anyRoute := range r.routes {
-		return r.providers[anyRoute.Provider], anyRoute, nil
-	}
-
 	return nil, Route{}, fmt.Errorf("%w: %q", ErrUnknownModel, logical)
 }
 
