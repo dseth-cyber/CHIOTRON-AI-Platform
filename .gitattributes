@@ -8,3 +8,8 @@
 *.png binary
 *.jpg binary
 *.ico binary
+
+# GitHub Linguist language overrides
+# Mark embedded web portal assets as vendored so GitHub reflects Go (Golang) as the primary platform language
+web/** linguist-vendored
+control-plane/internal/portal/dist/** linguist-vendored
