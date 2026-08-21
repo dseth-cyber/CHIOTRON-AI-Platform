@@ -30,7 +30,7 @@ export function Modal({
           ×
         </button>
         <h2>{title}</h2>
-        <div>{children}</div>
+        <div className="modal-body">{children}</div>
       </section>
     </div>
   );
