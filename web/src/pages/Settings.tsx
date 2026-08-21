@@ -577,7 +577,7 @@ export function Settings({ onConnect }: { onConnect: () => void }) {
 
           {apiKeysQuery.isLoading ? (
             <p className="history-hint">{t('table.loading')}</p>
-          ) : (apiKeysQuery.data ?? []).length === 0 ? (
+          ) : !Array.isArray(apiKeysQuery.data) || apiKeysQuery.data.length === 0 ? (
             <p className="history-hint">ยังไม่มีกุญแจ API ในระบบ (สามารถกดสร้างกุญแจฉุกเฉินได้ทันที)</p>
           ) : (
             <div className="table-wrap">
@@ -593,8 +593,9 @@ export function Settings({ onConnect }: { onConnect: () => void }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {(apiKeysQuery.data ?? []).map((keyItem) => {
+                  {apiKeysQuery.data.map((keyItem) => {
                     const isRevoked = !!keyItem.revokedAt;
+                    const scopes = Array.isArray(keyItem.scopes) ? keyItem.scopes : [];
                     return (
                       <tr key={keyItem.id} style={{ opacity: isRevoked ? 0.55 : 1 }}>
                         <td>
@@ -610,7 +611,7 @@ export function Settings({ onConnect }: { onConnect: () => void }) {
                         </td>
                         <td>
                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', maxWidth: '340px' }}>
-                            {keyItem.scopes.map((s) => (
+                            {scopes.map((s) => (
                               <span
                                 key={s}
                                 style={{

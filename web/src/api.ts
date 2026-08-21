@@ -484,8 +484,10 @@ export type ApiKeyRecord = {
   revokedAt?: string;
 };
 
-export const fetchApiKeys = (signal?: AbortSignal) =>
-  get<ApiKeyRecord[]>('/api/v1/admin/api-keys', signal);
+export const fetchApiKeys = async (signal?: AbortSignal): Promise<ApiKeyRecord[]> => {
+  const res = await get<{ apiKeys: ApiKeyRecord[] }>('/api/v1/admin/api-keys', signal);
+  return res.apiKeys ?? [];
+};
 
 export const createApiKey = (input: {
   name: string;
@@ -495,10 +497,12 @@ export const createApiKey = (input: {
   maxClassification?: string;
   rateLimitPerMinute?: number;
   expiresAt?: string;
-}) => send<{ record: ApiKeyRecord; secret: string }>('POST', '/api/v1/admin/api-keys', input);
+}) => send<{ apiKey: ApiKeyRecord; secret: string }>('POST', '/api/v1/admin/api-keys', input);
 
-export const revokeApiKey = (id: string) =>
-  send<{ record: ApiKeyRecord }>('POST', `/api/v1/admin/api-keys/${encodeURIComponent(id)}/revoke`);
+export const revokeApiKey = async (id: string): Promise<ApiKeyRecord | undefined> => {
+  const res = await send<{ apiKey: ApiKeyRecord }>('POST', `/api/v1/admin/api-keys/${encodeURIComponent(id)}/revoke`);
+  return res?.apiKey;
+};
 
 export type PromptTemplate = {
   id: string;
