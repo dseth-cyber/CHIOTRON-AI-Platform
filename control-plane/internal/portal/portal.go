@@ -40,8 +40,23 @@ func Handler() http.Handler {
 			_ = f.Close()
 			// Set proper content-type header based on file extension
 			ext := filepath.Ext(reqPath)
-			if mimeType := mime.TypeByExtension(ext); mimeType != "" {
-				w.Header().Set("Content-Type", mimeType)
+			switch ext {
+			case ".json", ".webmanifest":
+				w.Header().Set("Content-Type", "application/manifest+json; charset=utf-8")
+			case ".js", ".mjs":
+				w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+			case ".css":
+				w.Header().Set("Content-Type", "text/css; charset=utf-8")
+			case ".svg":
+				w.Header().Set("Content-Type", "image/svg+xml")
+			case ".png":
+				w.Header().Set("Content-Type", "image/png")
+			case ".ico":
+				w.Header().Set("Content-Type", "image/x-icon")
+			default:
+				if mimeType := mime.TypeByExtension(ext); mimeType != "" {
+					w.Header().Set("Content-Type", mimeType)
+				}
 			}
 			if strings.HasPrefix(reqPath, "assets/") {
 				// Cache immutable static assets for 1 year
