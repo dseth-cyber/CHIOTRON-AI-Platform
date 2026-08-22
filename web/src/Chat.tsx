@@ -46,12 +46,14 @@ export function ChatWorkspace({
   target,
   onNavigate,
   onStreamingChange,
+  onResponseComplete,
   isChatVisible = true,
 }: {
   target: ChatTarget | null;
   onConnect: () => void;
   onNavigate: Navigate;
   onStreamingChange?: (isStreaming: boolean) => void;
+  onResponseComplete?: (snippet: string) => void;
   isChatVisible?: boolean;
 }) {
   const { t, formatNumber, language } = useTranslation();
@@ -668,11 +670,13 @@ export function ChatWorkspace({
               ];
             });
 
+            const snippet = fullReply.replace(/[*_#`]/g, '').trim().slice(0, 90);
+            onResponseComplete?.(snippet);
+
             // Send notification if user is away on another page or in another tab
             if (!isChatVisible || document.hidden) {
               if ('Notification' in window && Notification.permission === 'granted') {
                 try {
-                  const snippet = fullReply.replace(/[*_#`]/g, '').trim().slice(0, 90);
                   new Notification('✨ AI ตอบคำถามเสร็จเรียบร้อยแล้ว', {
                     body: snippet ? `${snippet}...` : 'คลิกเพื่อดูคำตอบในหน้าแชท',
                     icon: '/icon-192.png',

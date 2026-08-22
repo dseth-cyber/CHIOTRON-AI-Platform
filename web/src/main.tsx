@@ -338,6 +338,14 @@ function App() {
   };
 
   const [isChatStreaming, setIsChatStreaming] = useState(false);
+  const [hasUnreadChat, setHasUnreadChat] = useState(false);
+  const [unreadSnippet, setUnreadSnippet] = useState<string>('');
+
+  useEffect(() => {
+    if (view === 'chat') {
+      setHasUnreadChat(false);
+    }
+  }, [view]);
 
   const resetPhases = () => {
     setPhases(initialPhases);
@@ -350,6 +358,7 @@ function App() {
   const navigate: Navigate = (next, target) => {
     setMobileMenuOpen(false);
     if (next === 'chat') {
+      setHasUnreadChat(false);
       if (target) setChatTarget(target);
     }
     setView(next);
@@ -468,6 +477,7 @@ function App() {
               {group.items.map((item) => {
                 const active = isActive(item);
                 const isChatWithBackgroundStreaming = item.view === 'chat' && isChatStreaming && view !== 'chat';
+                const isChatUnread = item.view === 'chat' && hasUnreadChat && view !== 'chat';
                 return (
                   <button
                     key={item.view}
@@ -475,12 +485,22 @@ function App() {
                     onClick={() => navigate(item.view)}
                     title={t(item.label)}
                   >
-                    <span className="nav-item-mark"><NavIcon view={item.view} /></span>
+                    <span className="nav-item-mark">
+                      <NavIcon view={item.view} />
+                      {isChatUnread && !isChatWithBackgroundStreaming && (
+                        <span className="nav-unread-dot" title="มีข้อความใหม่ที่ยังไม่ได้อ่าน" />
+                      )}
+                    </span>
                     {(!collapsed || mobileMenuOpen) && (
                       <span className="nav-item-text">
                         {t(item.label)}
                         {isChatWithBackgroundStreaming && (
                           <span className="chat-streaming-dot" title="AI กำลังตอบข้อความในพื้นหลัง">●</span>
+                        )}
+                        {isChatUnread && !isChatWithBackgroundStreaming && (
+                          <span className="chat-unread-tag" title="มีข้อความใหม่ที่ยังไม่ได้อ่าน">
+                            ใหม่
+                          </span>
                         )}
                       </span>
                     )}
@@ -520,6 +540,12 @@ function App() {
             onConnect={() => setShowConnect(true)}
             onNavigate={navigate}
             onStreamingChange={setIsChatStreaming}
+            onResponseComplete={(snippet) => {
+              if (view !== 'chat') {
+                setHasUnreadChat(true);
+                setUnreadSnippet(snippet);
+              }
+            }}
             isChatVisible={view === 'chat'}
           />
         </div>
@@ -541,16 +567,24 @@ function App() {
         {isDetailPage(view) && view !== 'capabilities' && view !== 'blueprint' && view !== 'prompts' && <DetailPage kind={view} onBack={() => setView('portal')} />}
       </main>
 
-      {/* Floating Background Streaming Toast */}
-      {isChatStreaming && view !== 'chat' && (
+      {/* Floating Background Streaming or Unread Chat Toast */}
+      {view !== 'chat' && (isChatStreaming || hasUnreadChat) && (
         <div
-          className="background-chat-indicator"
+          className={`background-chat-indicator ${hasUnreadChat && !isChatStreaming ? 'unread' : 'streaming'}`}
           onClick={() => navigate('chat')}
-          title="คลิกเพื่อกลับไปที่หน้าแชท"
+          title="คลิกเพื่อเปิดดูข้อความในแชท"
         >
-          <span className="pulsing-spinner">✨</span>
-          <span>AI กำลังประมวลผลคำตอบในพื้นหลัง...</span>
-          <button type="button" className="text-btn">เปิดดู ➔</button>
+          <span className={isChatStreaming ? "pulsing-spinner" : "unread-sparkle"}>
+            {isChatStreaming ? "✨" : "💬"}
+          </span>
+          <span>
+            {isChatStreaming
+              ? "AI กำลังประมวลผลคำตอบในพื้นหลัง..."
+              : `AI ตอบเสร็จแล้ว: ${unreadSnippet ? unreadSnippet.slice(0, 40) + '...' : 'มีข้อความใหม่'}`}
+          </span>
+          <button type="button" className="text-btn">
+            {isChatStreaming ? "เปิดดู ➔" : "เปิดอ่าน ➔"}
+          </button>
         </div>
       )}
 
