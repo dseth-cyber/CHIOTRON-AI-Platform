@@ -10,7 +10,7 @@ import { ThemeProvider } from './contexts/ThemeContext';
 import { BrandProvider, useBrandIcon } from './contexts/BrandContext';
 import { ThemeSwitcher } from './components/ThemeSwitcher';
 import type { TranslationKey } from './i18n';
-import { useComputeHealth, useCredential, useModels, usePlatform } from './hooks';
+import { useComputeHealth, useConversations, useCredential, useModels, usePlatform } from './hooks';
 import { installTheme } from './theme';
 import type { ChatTarget, DetailKind, Navigate, View } from './navigation';
 import { Home } from './pages/Home';
@@ -70,7 +70,6 @@ const MODULE_TAGS: Record<(typeof MODULE_KEYS)[number], string> = {
 };
 
 type NavItem = { view: View; mark: string; label: TranslationKey };
-type NavGroup = { label: TranslationKey; items: NavItem[] };
 
 function NavIcon({ view }: { view: View }) {
   switch (view) {
@@ -204,36 +203,19 @@ function NavIcon({ view }: { view: View }) {
   }
 }
 
-const NAV_GROUPS: NavGroup[] = [
-  {
-    label: 'nav.group.workspace',
-    items: [
-      { view: 'home', mark: 'HM', label: 'nav.home' },
-      { view: 'chat', mark: 'NC', label: 'nav.newChat' },
-      { view: 'analyze', mark: 'AN', label: 'nav.analyze' },
-      { view: 'create', mark: 'CR', label: 'nav.create' },
-      { view: 'history', mark: 'HI', label: 'nav.history' },
-      { view: 'assistants', mark: 'AS', label: 'nav.assistants' },
-      { view: 'favorites', mark: 'FV', label: 'nav.favorites' },
-      { view: 'shared', mark: 'SH', label: 'nav.shared' },
-    ],
-  },
-  {
-    label: 'nav.group.knowledge',
-    items: [
-      { view: 'documents', mark: 'DC', label: 'nav.documents' },
-      { view: 'search', mark: 'SR', label: 'nav.search' },
-    ],
-  },
-  {
-    label: 'nav.group.platform',
-    items: [
-      { view: 'portal', mark: 'DP', label: 'nav.developerPortal' },
-      { view: 'roadmap', mark: 'RM', label: 'nav.roadmap' },
-      { view: 'providers', mark: 'PV', label: 'nav.providers' },
-      { view: 'settings', mark: 'ST', label: 'nav.settings' },
-    ],
-  },
+const WORKSPACE_NAV_ITEMS: NavItem[] = [
+  { view: 'home', mark: 'HM', label: 'nav.home' },
+  { view: 'analyze', mark: 'AN', label: 'nav.analyze' },
+  { view: 'create', mark: 'CR', label: 'nav.create' },
+  { view: 'documents', mark: 'DC', label: 'nav.documents' },
+  { view: 'assistants', mark: 'AS', label: 'nav.assistants' },
+];
+
+const PLATFORM_NAV_ITEMS: NavItem[] = [
+  { view: 'portal', mark: 'DP', label: 'nav.developerPortal' },
+  { view: 'roadmap', mark: 'RM', label: 'nav.roadmap' },
+  { view: 'providers', mark: 'PV', label: 'nav.providers' },
+  { view: 'settings', mark: 'ST', label: 'nav.settings' },
 ];
 
 const CRUMBS: Record<View, TranslationKey> = {
@@ -290,7 +272,7 @@ const TITLES: Record<View, TranslationKey> = {
   prompts: 'module.prompts.title',
 };
 
-const PHASES_STORAGE_KEY = 'chiotron_roadmap_phases_v1';
+const PHASES_STORAGE_KEY = 'ceap_roadmap_phases';
 
 function loadSavedPhases(): Phase[] {
   try {
@@ -315,6 +297,34 @@ function App() {
   const [showAdd, setShowAdd] = useState(false);
   const [showConnect, setShowConnect] = useState(false);
   const [showUpdate, setShowUpdate] = useState<number | null>(null);
+
+  const [credential] = useCredential();
+  const connected = credential !== '';
+  const conversationsQuery = useConversations(connected);
+  const recentConversations = (conversationsQuery.data?.conversations ?? []).slice(0, 5);
+
+  const [recentOpen, setRecentOpen] = useState(() => {
+    try { return localStorage.getItem('ceap_nav_recent_open') !== 'false'; } catch { return true; }
+  });
+  const [workspaceOpen, setWorkspaceOpen] = useState(() => {
+    try { return localStorage.getItem('ceap_nav_workspace_open') !== 'false'; } catch { return true; }
+  });
+  const [platformOpen, setPlatformOpen] = useState(() => {
+    try { return localStorage.getItem('ceap_nav_platform_open') === 'true'; } catch { return false; }
+  });
+
+  const toggleRecent = () => setRecentOpen((v) => {
+    try { localStorage.setItem('ceap_nav_recent_open', String(!v)); } catch {}
+    return !v;
+  });
+  const toggleWorkspace = () => setWorkspaceOpen((v) => {
+    try { localStorage.setItem('ceap_nav_workspace_open', String(!v)); } catch {}
+    return !v;
+  });
+  const togglePlatform = () => setPlatformOpen((v) => {
+    try { localStorage.setItem('ceap_nav_platform_open', String(!v)); } catch {}
+    return !v;
+  });
 
   useEffect(() => {
     try {
@@ -475,46 +485,141 @@ function App() {
             )}
           </div>
         </div>
-        {NAV_GROUPS.map((group) => (
-          <div className="nav-group" key={group.label}>
-            {(!collapsed || mobileMenuOpen) && <p className="workspace-label">{t(group.label)}</p>}
-            <nav className="side-nav" aria-label={t(group.label)}>
-              {group.items.map((item) => {
-                const active = isActive(item);
-                const isChatWithBackgroundStreaming = item.view === 'chat' && isChatStreaming && view !== 'chat';
-                const isChatUnread = item.view === 'chat' && hasUnreadChat && view !== 'chat';
-                return (
+
+        {/* 1. Prominent New Chat Button */}
+        <div className="sidebar-new-chat-wrap">
+          <button
+            type="button"
+            className={`sidebar-new-chat-btn ${view === 'chat' && chatTarget?.conversationId === null ? 'active' : ''}`}
+            onClick={() => navigate('chat')}
+            title="เริ่มการสนทนาใหม่ (New Chat)"
+          >
+            <span className="plus-icon">＋</span>
+            {(!collapsed || mobileMenuOpen) && (
+              <span className="btn-text">
+                {t('nav.newChat')}
+                {isChatStreaming && view !== 'chat' && (
+                  <span className="chat-streaming-dot" title="AI กำลังตอบข้อความในพื้นหลัง">●</span>
+                )}
+                {hasUnreadChat && view !== 'chat' && !isChatStreaming && (
+                  <span className="chat-unread-tag">ใหม่</span>
+                )}
+              </span>
+            )}
+          </button>
+        </div>
+
+        <div className="sidebar-scrollable-content">
+          {/* 2. Recent Chats Section (1-5 recent items + View All) */}
+          {(!collapsed || mobileMenuOpen) && connected && (
+            <div className="nav-accordion-group recent-group">
+              <button
+                type="button"
+                className="nav-accordion-header"
+                onClick={toggleRecent}
+                aria-expanded={recentOpen}
+              >
+                <span className="header-title">เมื่อเร็วๆ นี้</span>
+                <span className="header-chevron">{recentOpen ? '▾' : '▸'}</span>
+              </button>
+
+              {recentOpen && (
+                <div className="recent-chats-list">
+                  {recentConversations.length > 0 ? (
+                    recentConversations.map((conv) => {
+                      const isCurrentActive = view === 'chat' && chatTarget?.conversationId === conv.id;
+                      return (
+                        <button
+                          key={conv.id}
+                          type="button"
+                          className={`recent-chat-item ${isCurrentActive ? 'active' : ''}`}
+                          onClick={() => navigate('chat', { conversationId: conv.id })}
+                          title={conv.title || 'การสนทนา'}
+                        >
+                          <span className="chat-icon">💬</span>
+                          <span className="chat-title">{conv.title || 'การสนทนา'}</span>
+                        </button>
+                      );
+                    })
+                  ) : (
+                    <div className="recent-chats-empty">ยังไม่มีประวัติการสนทนา</div>
+                  )}
+                  <button
+                    type="button"
+                    className="recent-history-link"
+                    onClick={() => navigate('history')}
+                  >
+                    <span>ดูประวัติทั้งหมด</span>
+                    <span className="arrow">➔</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 3. Workspace Section */}
+          <div className="nav-accordion-group">
+            {(!collapsed || mobileMenuOpen) && (
+              <button
+                type="button"
+                className="nav-accordion-header"
+                onClick={toggleWorkspace}
+                aria-expanded={workspaceOpen}
+              >
+                <span className="header-title">{t('nav.group.workspace')}</span>
+                <span className="header-chevron">{workspaceOpen ? '▾' : '▸'}</span>
+              </button>
+            )}
+
+            {(workspaceOpen || collapsed) && (
+              <nav className="side-nav" aria-label={t('nav.group.workspace')}>
+                {WORKSPACE_NAV_ITEMS.map((item) => (
                   <button
                     key={item.view}
-                    className={active ? 'nav-item active' : 'nav-item'}
+                    className={isActive(item) ? 'nav-item active' : 'nav-item'}
                     onClick={() => navigate(item.view)}
                     title={t(item.label)}
                   >
-                    <span className="nav-item-mark">
-                      <NavIcon view={item.view} />
-                      {isChatUnread && !isChatWithBackgroundStreaming && (
-                        <span className="nav-unread-dot" title="มีข้อความใหม่ที่ยังไม่ได้อ่าน" />
-                      )}
-                    </span>
-                    {(!collapsed || mobileMenuOpen) && (
-                      <span className="nav-item-text">
-                        {t(item.label)}
-                        {isChatWithBackgroundStreaming && (
-                          <span className="chat-streaming-dot" title="AI กำลังตอบข้อความในพื้นหลัง">●</span>
-                        )}
-                        {isChatUnread && !isChatWithBackgroundStreaming && (
-                          <span className="chat-unread-tag" title="มีข้อความใหม่ที่ยังไม่ได้อ่าน">
-                            ใหม่
-                          </span>
-                        )}
-                      </span>
-                    )}
+                    <span className="nav-item-mark"><NavIcon view={item.view} /></span>
+                    {(!collapsed || mobileMenuOpen) && <span className="nav-item-text">{t(item.label)}</span>}
                   </button>
-                );
-              })}
-            </nav>
+                ))}
+              </nav>
+            )}
           </div>
-        ))}
+
+          {/* 4. Platform & Governance Section (Collapsible Accordion) */}
+          <div className="nav-accordion-group">
+            {(!collapsed || mobileMenuOpen) && (
+              <button
+                type="button"
+                className="nav-accordion-header"
+                onClick={togglePlatform}
+                aria-expanded={platformOpen}
+              >
+                <span className="header-title">{t('nav.group.platform')}</span>
+                <span className="header-chevron">{platformOpen ? '▾' : '▸'}</span>
+              </button>
+            )}
+
+            {(platformOpen || collapsed) && (
+              <nav className="side-nav" aria-label={t('nav.group.platform')}>
+                {PLATFORM_NAV_ITEMS.map((item) => (
+                  <button
+                    key={item.view}
+                    className={isActive(item) ? 'nav-item active' : 'nav-item'}
+                    onClick={() => navigate(item.view)}
+                    title={t(item.label)}
+                  >
+                    <span className="nav-item-mark"><NavIcon view={item.view} /></span>
+                    {(!collapsed || mobileMenuOpen) && <span className="nav-item-text">{t(item.label)}</span>}
+                  </button>
+                ))}
+              </nav>
+            )}
+          </div>
+        </div>
+
         <div className="sidebar-foot">
           <ConnectionBadge onConnect={() => setShowConnect(true)} />
         </div>
