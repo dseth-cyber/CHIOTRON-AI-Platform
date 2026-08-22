@@ -131,14 +131,19 @@ export function ChatWorkspace({
         }
         hydratedFor.current = null;
       }
+    } else if (target && Object.keys(target).length === 0) {
+      setConversationId(null);
+      setTurns([]);
+      setPrompt('');
+      hydratedFor.current = null;
     }
-    if (target?.prompt !== undefined && target.prompt !== '') {
+    if (target?.prompt !== undefined) {
       setPrompt(target.prompt);
     }
     if (target?.assistant !== undefined && target.assistant !== '') {
       setAssistant(target.assistant);
     }
-  }, [target?.conversationId, target?.prompt, conversationId, target?.assistant]);
+  }, [target, conversationId]);
 
   // Set default assistant if none is selected
   useEffect(() => {
@@ -588,6 +593,7 @@ export function ChatWorkspace({
       bottomTextareaRef.current.style.height = 'auto';
       bottomTextareaRef.current.style.overflowY = 'hidden';
     }
+    onNavigate('chat', { conversationId: null, prompt: '' });
   };
 
   const handleCopy = async (text: string, index: number) => {

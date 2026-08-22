@@ -359,7 +359,12 @@ function App() {
     setMobileMenuOpen(false);
     if (next === 'chat') {
       setHasUnreadChat(false);
-      if (target) setChatTarget(target);
+      if (target && (target.conversationId !== undefined || target.prompt !== undefined || target.assistant !== undefined)) {
+        setChatTarget(target);
+      } else {
+        // Clicking 'สนทนาใหม่' / New Chat explicitly starts a fresh new chat session
+        setChatTarget({ conversationId: null, prompt: '' });
+      }
     }
     setView(next);
   };
