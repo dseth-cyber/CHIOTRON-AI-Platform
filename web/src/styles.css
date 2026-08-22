@@ -2426,7 +2426,7 @@ html.theme-light .hero-custom-icon-anim {
   width: 100%;
   margin-top: 10px;
   position: relative;
-  z-index: 200;
+  z-index: 20;
 }
 .gemini-omnibar {
   display: flex;
@@ -2440,7 +2440,7 @@ html.theme-light .hero-custom-icon-anim {
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
   transition: all 0.2s ease;
   position: relative;
-  z-index: 200;
+  z-index: 20;
   width: 100%;
   box-sizing: border-box;
 }
@@ -3556,7 +3556,7 @@ html.theme-glassmorphism .orb-core {
     inset: 0;
     background: rgba(0, 0, 0, 0.7);
     backdrop-filter: blur(4px);
-    z-index: 199;
+    z-index: 1200 !important;
   }
   .sidebar {
     position: fixed !important;
@@ -3568,7 +3568,7 @@ html.theme-glassmorphism .orb-core {
     background: #140e2b;
     border-right: 1px solid rgba(255, 255, 255, 0.15) !important;
     border-bottom: 0 !important;
-    z-index: 200 !important;
+    z-index: 1201 !important;
     transform: translateX(-100%);
     transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
     display: flex !important;
