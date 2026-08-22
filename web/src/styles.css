@@ -5454,13 +5454,13 @@ html.theme-glassmorphism .orb-core {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 14px;
+  padding: 9px 14px;
   border-radius: 10px;
   background: linear-gradient(135deg, rgba(0, 210, 255, 0.16) 0%, rgba(27, 217, 178, 0.12) 100%);
   border: 1px solid rgba(0, 210, 255, 0.35);
   color: #e6f6ff;
   font-size: 0.88rem;
-  font-weight: 600;
+  font-weight: 400;
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1);
@@ -5468,8 +5468,8 @@ html.theme-glassmorphism .orb-core {
 }
 
 .sidebar-new-chat-btn .plus-icon {
-  font-size: 1.1rem;
-  font-weight: 700;
+  font-size: 1.15rem;
+  font-weight: 400;
   color: #00d2ff;
   line-height: 1;
   display: inline-grid;
@@ -5481,6 +5481,7 @@ html.theme-glassmorphism .orb-core {
   align-items: center;
   gap: 6px;
   flex: 1;
+  font-weight: 400;
   white-space: nowrap;
 }
 
@@ -5540,9 +5541,9 @@ html.theme-glassmorphism .orb-core {
   background: transparent;
   border: none;
   color: #7891a7;
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.6px;
+  font-size: 0.76rem;
+  font-weight: 400;
+  letter-spacing: 0.5px;
   cursor: pointer;
   border-radius: 6px;
   transition: color 0.15s ease, background 0.15s ease;
@@ -5583,6 +5584,7 @@ html.theme-glassmorphism .orb-core {
   border: 1px solid transparent;
   color: #b0c4d4;
   font-size: 0.82rem;
+  font-weight: 400;
   text-align: left;
   cursor: pointer;
   transition: all 0.15s ease;
@@ -5601,6 +5603,7 @@ html.theme-glassmorphism .orb-core {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-weight: 400;
 }
 
 .recent-chat-item:hover {
@@ -5617,7 +5620,7 @@ html.theme-glassmorphism .orb-core {
   background: rgba(0, 210, 255, 0.12);
   color: #00d2ff;
   border-color: rgba(0, 210, 255, 0.3);
-  font-weight: 600;
+  font-weight: 400;
 }
 
 .recent-chat-item.active .chat-icon {
@@ -5629,6 +5632,7 @@ html.theme-glassmorphism .orb-core {
   color: #5d7488;
   font-size: 0.76rem;
   font-style: italic;
+  font-weight: 400;
 }
 
 .recent-history-link {
@@ -5643,7 +5647,7 @@ html.theme-glassmorphism .orb-core {
   border: none;
   color: #00d2ff;
   font-size: 0.76rem;
-  font-weight: 600;
+  font-weight: 400;
   cursor: pointer;
   transition: all 0.15s ease;
   text-align: left;
@@ -5656,6 +5660,10 @@ html.theme-glassmorphism .orb-core {
 
 .recent-history-link .arrow {
   transition: transform 0.15s ease;
+}
+
+.recent-history-link:hover .arrow {
+  transform: translateX(3px);
 }
 
 .recent-history-link:hover .arrow {
