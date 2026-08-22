@@ -741,9 +741,10 @@ html.theme-glassmorphism .field select,
 html.theme-glassmorphism .field textarea,
 html.theme-glassmorphism .composer textarea,
 html.theme-glassmorphism .search-bar input,
-html.theme-glassmorphism textarea,
-html.theme-glassmorphism input[type="text"],
-html.theme-glassmorphism input[type="search"],
+html.theme-glassmorphism .auth-card input,
+html.theme-glassmorphism .modal input,
+html.theme-glassmorphism .modal select,
+html.theme-glassmorphism .modal textarea,
 html.theme-glassmorphism select {
   background: rgba(255, 255, 255, 0.06) !important;
   backdrop-filter: blur(16px);
@@ -766,9 +767,10 @@ html.theme-glassmorphism .field select:focus,
 html.theme-glassmorphism .field textarea:focus,
 html.theme-glassmorphism .composer textarea:focus,
 html.theme-glassmorphism .search-bar input:focus,
-html.theme-glassmorphism textarea:focus,
-html.theme-glassmorphism input[type="text"]:focus,
-html.theme-glassmorphism input[type="search"]:focus,
+html.theme-glassmorphism .auth-card input:focus,
+html.theme-glassmorphism .modal input:focus,
+html.theme-glassmorphism .modal select:focus,
+html.theme-glassmorphism .modal textarea:focus,
 html.theme-glassmorphism select:focus {
   border-color: #00d2ff !important;
   box-shadow: 0 0 16px rgba(0, 210, 255, 0.35);
@@ -2467,12 +2469,24 @@ html.theme-light .hero-custom-icon-anim {
   color: #ffffff;
   border-color: #00d2ff;
 }
-.gemini-omnibar textarea {
+.gemini-omnibar textarea,
+html.theme-glassmorphism .gemini-omnibar textarea,
+html.theme-dark .gemini-omnibar textarea,
+html.theme-light .gemini-omnibar textarea,
+.gemini-omnibar textarea:focus,
+html.theme-glassmorphism .gemini-omnibar textarea:focus,
+html.theme-dark .gemini-omnibar textarea:focus,
+html.theme-light .gemini-omnibar textarea:focus {
   flex: 1;
   background: transparent !important;
-  border: 0 !important;
+  background-color: transparent !important;
+  border: none !important;
+  border-width: 0 !important;
   outline: none !important;
   box-shadow: none !important;
+  border-radius: 0 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
   color: #ffffff !important;
   font-size: 0.95rem;
   line-height: 1.5;
@@ -2485,6 +2499,10 @@ html.theme-light .hero-custom-icon-anim {
   font-family: inherit;
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+html.theme-light .gemini-omnibar textarea,
+html.light .gemini-omnibar textarea {
+  color: #0f172a !important;
 }
 .gemini-omnibar textarea::-webkit-scrollbar {
   width: 5px;
@@ -2501,6 +2519,10 @@ html.theme-light .hero-custom-icon-anim {
 }
 .gemini-omnibar textarea::placeholder {
   color: rgba(255, 255, 255, 0.4) !important;
+}
+html.theme-light .gemini-omnibar textarea::placeholder,
+html.light .gemini-omnibar textarea::placeholder {
+  color: #64748b !important;
 }
 .omnibar-right-controls {
   display: flex;
