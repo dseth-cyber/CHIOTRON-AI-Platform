@@ -196,12 +196,12 @@ export function ChatWorkspace({
   }, [prompt]);
 
   // Speech Recognition (Voice Input / Dictation into Textarea)
-  const toggleVoiceInput = () => {
+  const toggleVoiceInput = async () => {
     const SpeechRecognition =
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
     if (!SpeechRecognition) {
-      alert('เบราว์เซอร์ของคุณยังไม่รองรับระบบสั่งงานด้วยเสียง กรุณาเปิดผ่าน Chrome หรือ Edge');
+      alert('เบราว์เซอร์ของคุณยังไม่รองรับระบบสั่งงานด้วยเสียง กรุณาเปิดผ่าน Google Chrome หรือ Microsoft Edge');
       return;
     }
 
@@ -213,13 +213,32 @@ export function ChatWorkspace({
       return;
     }
 
+    // Request microphone permission explicitly if available
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream.getTracks().forEach((track) => track.stop());
+      } catch (err: any) {
+        console.warn('Microphone permission request failed:', err);
+        if (err?.name === 'NotAllowedError' || err?.name === 'PermissionDeniedError') {
+          alert('⚠️ กรุณากด "อนุญาต (Allow)" ให้เบราว์เซอร์เข้าถึงไมโครโฟน โดยคลิกที่ไอคอนรูปแม่กุญแจหรือการตั้งค่าหน้าเว็บข้างช่อง URL');
+          setIsListening(false);
+          return;
+        }
+      }
+    }
+
     try {
       const recognition = new SpeechRecognition();
       recognition.lang = 'th-TH';
       recognition.continuous = false;
       recognition.interimResults = true;
+      recognition.maxAlternatives = 1;
 
-      recognition.onstart = () => setIsListening(true);
+      recognition.onstart = () => {
+        setIsListening(true);
+      };
+
       recognition.onresult = (event: any) => {
         let text = '';
         for (let i = event.resultIndex; i < event.results.length; i++) {
@@ -232,13 +251,29 @@ export function ChatWorkspace({
           });
         }
       };
-      recognition.onerror = () => setIsListening(false);
-      recognition.onend = () => setIsListening(false);
+
+      recognition.onerror = (event: any) => {
+        console.warn('Speech recognition error:', event?.error);
+        setIsListening(false);
+        if (event?.error === 'not-allowed') {
+          alert('⚠️ เบราว์เซอร์ไม่อนุญาตให้ใช้ไมโครโฟน กรุณาเปิดสิทธิ์ไมโครโฟนในการตั้งค่าเบราว์เซอร์ (หรือตรวจสอบว่าเชื่อมต่อผ่าน HTTPS / localhost หรือไม่)');
+        } else if (event?.error === 'network') {
+          alert('⚠️ การแปลงเสียงเป็นข้อความของ Google Speech Service ต้องการการเชื่อมต่ออินเทอร์เน็ต');
+        } else if (event?.error === 'audio-capture') {
+          alert('⚠️ ไม่พบอุปกรณ์ไมโครโฟน หรือไมโครโฟนกำลังถูกโปรแกรมอื่นใช้งานอยู่');
+        }
+      };
+
+      recognition.onend = () => {
+        setIsListening(false);
+      };
 
       recognitionRef.current = recognition;
       recognition.start();
-    } catch {
+    } catch (err) {
+      console.error('Speech recognition start failed:', err);
       setIsListening(false);
+      alert('⚠️ ไม่สามารถเริ่มระบบแปลงเสียงได้ กรุณาตรวจสอบสิทธิ์การใช้ไมโครโฟนในเบราว์เซอร์');
     }
   };
 
@@ -393,7 +428,13 @@ export function ChatWorkspace({
         }
       };
 
-      recognition.onerror = () => {
+      recognition.onerror = (event: any) => {
+        console.warn('Live speech recognition error:', event?.error);
+        if (event?.error === 'not-allowed' || event?.error === 'permission-denied') {
+          alert('⚠️ กรุณากด "อนุญาต (Allow)" ให้เบราว์เซอร์เข้าถึงไมโครโฟน เพื่อสนทนาด้วยเสียง');
+          stopLiveMode();
+          return;
+        }
         if (isLiveActiveRef.current && !isPausedRef.current && liveState === 'listening') {
           setTimeout(() => {
             if (isLiveActiveRef.current && !isPausedRef.current) {

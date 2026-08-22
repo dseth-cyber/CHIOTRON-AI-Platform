@@ -1,0 +1,20 @@
+{
+  "name": "CHIOTRON Enterprise AI Platform",
+  "short_name": "CHIOTRON AI",
+  "description": "Modern Enterprise AI Platform with Single Go Binary Architecture",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0a1221",
+  "theme_color": "#0a1221",
+  "categories": ["business", "productivity", "utilities"],
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
