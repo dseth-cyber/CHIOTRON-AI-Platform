@@ -63,6 +63,61 @@ docker compose exec ollama ollama pull nomic-embed-text
 
 ---
 
+## ⚡ การประมวลผลและการตรวจจับ GPU อัตโนมัติ (GPU Acceleration & Zero-Config Compute)
+
+แพลตฟอร์ม CHIOTRON AI ถูกออกแบบมาให้รองรับการตรวจจับและดึงขุมพลังการประมวลผลของการ์ดจอ (NVIDIA GPU) มาใช้งานโดยอัตโนมัติ 100% ผ่าน **NVIDIA Container Runtime Pass-Through**:
+
+### 🔍 1. กลไกการทำงานของระบบประมวลผล (Compute Plane Architecture)
+* **Auto-Hardware Detection:** ระบบจะตรวจสอบการมีอยู่ของ NVIDIA GPU และขนาด VRAM ทันทีที่สตาร์ท Container
+* **Hybrid Offloading (กรณี VRAM น้อยกว่าขนาดโมเดล):** หากการ์ดจอมี VRAM จำกัด (เช่น NVIDIA Quadro P620 2GB) ระบบจะแบ่ง Model Layers ส่วนใหญ่ขึ้นไปรันบน GPU (เช่น 18/29 ชั้น) และนำส่วนที่เหลือประมวลผลร่วมกับ CPU โดยอัตโนมัติ ป้องกันปัญหาหน่วยความจำไม่พอ (OOM)
+* **Full GPU Offload (กรณี VRAM เพียงพอ):** หากการ์ดจอมี VRAM เพียงพอ (เช่น 8GB, 12GB, 16GB, 24GB+) ระบบจะยกโมเดลขึ้นไปประมวลผลบน **GPU 100% (29/29 ชั้น)** ให้ความเร็วในการตอบสนองสูงสุด
+
+---
+
+### 🚀 2. การนำระบบไปติดตั้งบนเครื่องใหม่ที่มี GPU (Zero-Config GPU Migration)
+เมื่อนำระบบนี้ไปติดตั้งบนเครื่อง Server หรือ PC เครื่องใหม่ที่มีการ์ดจอ NVIDIA **ระบบจะตรวจพบและใช้งาน GPU เองอัตโนมัติทันทีโดยไม่ต้องแก้ไขโค้ดใดๆ**:
+
+```text
+[เครื่องใหม่: PC / Server GPU]
+         │
+         ▼ (Auto-Detect CUDA & VRAM)
+┌────────────────────────────────────────────────────────┐
+│  Ollama Compute Engine (NVIDIA Container Runtime)     │
+│  - Offload 100% Layers onto GPU VRAM                   │
+│  - Performance: 100 ~ 200+ tokens/sec                  │
+└────────────────────────────────────────────────────────┘
+```
+
+#### 📋 ข้อกำหนดสำหรับเครื่องปลายทาง (Prerequisites):
+1. **ติดตั้งไดรเวอร์ NVIDIA บนเครื่อง:**
+   * ตรวจสอบความพร้อมด้วยคำสั่ง `nvidia-smi` บน Terminal
+2. **สภาพแวดล้อม Container:**
+   * **Windows:** เปิดใช้งาน Docker Desktop ร่วมกับ WSL2 (WSL2 จะส่งต่อ GPU เข้า Docker ให้อัตโนมัติ)
+   * **Linux (Ubuntu / Debian / RHEL):** ติดตั้ง `nvidia-container-toolkit` เพื่อให้ Docker ใช้งาน GPU ได้:
+     ```bash
+     sudo apt-get install -y nvidia-container-toolkit
+     sudo systemctl restart docker
+     ```
+3. **สั่งรันระบบ:**
+   ```bash
+   docker compose up -d
+   docker compose --profile compute up -d
+   ```
+
+---
+
+### 📊 3. ตารางขนาด VRAM และโมเดลที่แนะนำ (Hardware Sizing Guide)
+
+| ขนาด VRAM | การ์ดจอตัวอย่าง | โมเดลที่เหมาะสม | โหมดการทำงาน | ความเร็วเฉลี่ย |
+|---|---|---|---|---|
+| **2GB - 4GB** | Quadro P620, GTX 1650, MX450 | `qwen3:0.6b`, `qwen2.5:0.5b`, `nomic-embed-text` | **Hybrid (GPU + CPU)** | ~30 - 50 tok/s |
+| **6GB - 8GB** | RTX 3060 Laptop, RTX 4060 8GB | `qwen3:0.6b` (Full), `qwen3:4b` (Full/Hybrid) | **Full GPU / Hybrid** | ~60 - 100 tok/s |
+| **12GB - 16GB** | RTX 3060 12GB, RTX 4070/4080, T4 | `qwen3:0.6b`, `qwen3:4b`, `qwen3:8b` (Full) | **Full GPU (100%)** | ~100 - 180 tok/s |
+| **24GB+** | RTX 3090/4090, A10, A100 | `qwen3:8b`, `qwen3:14b`, `DeepSeek R1` | **Full GPU (Enterprise)** | ~150 - 250+ tok/s |
+
+
+---
+
 ## 📖 ขั้นตอนการเริ่มต้นใช้งานระบบ (First-Time User & Admin Walkthrough)
 
 ### 1️⃣ การเข้าสู่ระบบครั้งแรก (First Login)
