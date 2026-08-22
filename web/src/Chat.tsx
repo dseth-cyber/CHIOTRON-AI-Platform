@@ -45,10 +45,14 @@ const PROMPT_SUGGESTIONS = [
 export function ChatWorkspace({
   target,
   onNavigate,
+  onStreamingChange,
+  isChatVisible = true,
 }: {
   target: ChatTarget | null;
   onConnect: () => void;
   onNavigate: Navigate;
+  onStreamingChange?: (isStreaming: boolean) => void;
+  isChatVisible?: boolean;
 }) {
   const { t, formatNumber, language } = useTranslation();
   const { customIcon } = useBrandIcon();
@@ -63,6 +67,10 @@ export function ChatWorkspace({
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState('');
   const [showToolsMenu, setShowToolsMenu] = useState(false);
+
+  useEffect(() => {
+    onStreamingChange?.(streaming);
+  }, [streaming, onStreamingChange]);
   const [showModelPicker, setShowModelPicker] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
@@ -112,11 +120,17 @@ export function ChatWorkspace({
 
   // Sync target changes from props
   useEffect(() => {
-    if (target?.conversationId !== undefined && target.conversationId !== conversationId) {
-      setConversationId(target.conversationId);
-      hydratedFor.current = null;
+    if (target?.conversationId !== undefined) {
+      if (target.conversationId !== conversationId) {
+        setConversationId(target.conversationId);
+        if (target.conversationId === null) {
+          setTurns([]);
+          setPrompt('');
+        }
+        hydratedFor.current = null;
+      }
     }
-    if (target?.prompt) {
+    if (target?.prompt !== undefined && target.prompt !== '') {
       setPrompt(target.prompt);
     }
     if (target?.assistant !== undefined && target.assistant !== '') {
@@ -611,6 +625,10 @@ export function ChatWorkspace({
     setStreaming(true);
     setError('');
 
+    if ('Notification' in window && Notification.permission === 'default') {
+      void Notification.requestPermission();
+    }
+
     const startedAt = Date.now();
     let fullReply = '';
 
@@ -649,6 +667,19 @@ export function ChatWorkspace({
                 },
               ];
             });
+
+            // Send notification if user is away on another page or in another tab
+            if (!isChatVisible || document.hidden) {
+              if ('Notification' in window && Notification.permission === 'granted') {
+                try {
+                  const snippet = fullReply.replace(/[*_#`]/g, '').trim().slice(0, 90);
+                  new Notification('✨ AI ตอบคำถามเสร็จเรียบร้อยแล้ว', {
+                    body: snippet ? `${snippet}...` : 'คลิกเพื่อดูคำตอบในหน้าแชท',
+                    icon: '/icon-192.png',
+                  });
+                } catch {}
+              }
+            }
           },
         },
         abort.current.signal,

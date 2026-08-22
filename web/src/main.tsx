@@ -337,6 +337,8 @@ function App() {
     setView('roadmap');
   };
 
+  const [isChatStreaming, setIsChatStreaming] = useState(false);
+
   const resetPhases = () => {
     setPhases(initialPhases);
     try {
@@ -344,11 +346,12 @@ function App() {
     } catch {}
   };
 
-  // Navigating to chat with a target remounts the workspace, so a conversation
-  // opened from history replaces whatever was on screen rather than merging with it.
+  // Navigating between pages keeps the ChatWorkspace alive in the background
   const navigate: Navigate = (next, target) => {
     setMobileMenuOpen(false);
-    if (next === 'chat') setChatTarget(target ?? {});
+    if (next === 'chat') {
+      if (target) setChatTarget(target);
+    }
     setView(next);
   };
 
@@ -462,17 +465,28 @@ function App() {
           <div className="nav-group" key={group.label}>
             {(!collapsed || mobileMenuOpen) && <p className="workspace-label">{t(group.label)}</p>}
             <nav className="side-nav" aria-label={t(group.label)}>
-              {group.items.map((item) => (
-                <button
-                  key={item.view}
-                  className={isActive(item) ? 'nav-item active' : 'nav-item'}
-                  onClick={() => navigate(item.view)}
-                  title={t(item.label)}
-                >
-                  <span className="nav-item-mark"><NavIcon view={item.view} /></span>
-                  {(!collapsed || mobileMenuOpen) && <span className="nav-item-text">{t(item.label)}</span>}
-                </button>
-              ))}
+              {group.items.map((item) => {
+                const active = isActive(item);
+                const isChatWithBackgroundStreaming = item.view === 'chat' && isChatStreaming && view !== 'chat';
+                return (
+                  <button
+                    key={item.view}
+                    className={active ? 'nav-item active' : 'nav-item'}
+                    onClick={() => navigate(item.view)}
+                    title={t(item.label)}
+                  >
+                    <span className="nav-item-mark"><NavIcon view={item.view} /></span>
+                    {(!collapsed || mobileMenuOpen) && (
+                      <span className="nav-item-text">
+                        {t(item.label)}
+                        {isChatWithBackgroundStreaming && (
+                          <span className="chat-streaming-dot" title="AI กำลังตอบข้อความในพื้นหลัง">●</span>
+                        )}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
             </nav>
           </div>
         ))}
@@ -498,14 +512,18 @@ function App() {
         </header>
 
         {view === 'home' && <Home onNavigate={navigate} onConnect={() => setShowConnect(true)} />}
-        {view === 'chat' && (
+        
+        {/* ChatWorkspace stays mounted in the background to ensure stream & conversation history are never lost */}
+        <div style={{ display: view === 'chat' ? 'contents' : 'none' }}>
           <ChatWorkspace
-            key={chatTarget?.conversationId ?? chatTarget?.assistant ?? 'new'}
             target={chatTarget}
             onConnect={() => setShowConnect(true)}
             onNavigate={navigate}
+            onStreamingChange={setIsChatStreaming}
+            isChatVisible={view === 'chat'}
           />
-        )}
+        </div>
+
         {view === 'analyze' && <Analyze />}
         {view === 'create' && <Create />}
         {view === 'history' && <History onNavigate={navigate} />}
@@ -522,6 +540,19 @@ function App() {
         {view === 'prompts' && <PromptLibrary onBack={() => setView('portal')} />}
         {isDetailPage(view) && view !== 'capabilities' && view !== 'blueprint' && view !== 'prompts' && <DetailPage kind={view} onBack={() => setView('portal')} />}
       </main>
+
+      {/* Floating Background Streaming Toast */}
+      {isChatStreaming && view !== 'chat' && (
+        <div
+          className="background-chat-indicator"
+          onClick={() => navigate('chat')}
+          title="คลิกเพื่อกลับไปที่หน้าแชท"
+        >
+          <span className="pulsing-spinner">✨</span>
+          <span>AI กำลังประมวลผลคำตอบในพื้นหลัง...</span>
+          <button type="button" className="text-btn">เปิดดู ➔</button>
+        </div>
+      )}
 
       {showConnect && <ConnectDialog onClose={() => setShowConnect(false)} />}
       {showAdd && (
