@@ -119,17 +119,20 @@ export function ChatWorkspace({
   const silenceTimeoutRef = useRef<number | null>(null);
   const hydratedFor = useRef<string | null>(null);
 
+  const lastAppliedTargetRef = useRef<ChatTarget | null | undefined>(undefined);
+
   isLiveActiveRef.current = isLiveMode;
 
-  // Sync target changes from props
+  // Sync target changes from props ONLY when the target prop actually changes
   useEffect(() => {
+    if (lastAppliedTargetRef.current === target) return;
+    lastAppliedTargetRef.current = target;
+
     if (target?.conversationId !== undefined) {
-      if (target.conversationId !== conversationId) {
-        setConversationId(target.conversationId);
-        if (target.conversationId === null) {
-          setTurns([]);
-          setPrompt('');
-        }
+      setConversationId(target.conversationId);
+      if (target.conversationId === null) {
+        setTurns([]);
+        setPrompt('');
         hydratedFor.current = null;
       }
     } else if (target && Object.keys(target).length === 0) {
@@ -144,7 +147,7 @@ export function ChatWorkspace({
     if (target?.assistant !== undefined && target.assistant !== '') {
       setAssistant(target.assistant);
     }
-  }, [target, conversationId]);
+  }, [target]);
 
   // Set default assistant if none is selected
   useEffect(() => {
