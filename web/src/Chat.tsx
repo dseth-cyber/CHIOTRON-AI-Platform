@@ -177,11 +177,19 @@ export function ChatWorkspace({
     );
   }, [conversationId, detail.data]);
 
-  // Auto-scroll to the bottom on new turns, streaming chunks, or status updates
-  useEffect(() => {
+  // Robust Auto-scroll to bottom on new turns, streaming chunks, or status updates
+  const scrollToBottom = (behavior: ScrollBehavior = 'smooth') => {
     if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
+      messagesEndRef.current.scrollIntoView({ behavior, block: 'end' });
     }
+    window.scrollTo({
+      top: document.documentElement.scrollHeight,
+      behavior,
+    });
+  };
+
+  useEffect(() => {
+    scrollToBottom('smooth');
   }, [turns, streaming]);
 
   useEffect(() => {

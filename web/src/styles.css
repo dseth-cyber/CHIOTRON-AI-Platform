@@ -2747,14 +2747,14 @@ html.light .ui-toggle-switch.active .ui-toggle-label {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  padding: 10px 0 20px;
+  padding: 10px 0 10px;
   max-width: 860px;
   margin: 0 auto;
   width: 100%;
   scroll-behavior: smooth;
 }
 .transcript-scroll-anchor {
-  height: 10px;
+  height: 70px;
   width: 100%;
   flex-shrink: 0;
   pointer-events: none;
