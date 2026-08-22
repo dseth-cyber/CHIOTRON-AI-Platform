@@ -2088,7 +2088,7 @@ html.theme-light .upload-hint-text code {
   gap: 12px;
   padding: 8px 12px;
   position: relative;
-  z-index: 10;
+  z-index: 100;
 }
 .chat-model-badge {
   display: inline-flex;
