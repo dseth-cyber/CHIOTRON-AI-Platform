@@ -372,7 +372,7 @@ export function Home({ onNavigate, onConnect }: { onNavigate: Navigate; onConnec
     <>
       <section className="home-header-row">
         <div>
-          <h1 style={{ fontSize: '1.45rem', fontWeight: 600, margin: '0 0 6px', color: '#ffffff' }}>
+          <h1 className="home-welcome-title">
             {loc.welcome.replace('{name}', identity.data?.name ?? 'Admin')}
           </h1>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>

@@ -5678,9 +5678,38 @@ html.theme-glassmorphism .orb-core {
 }
 
 /* ==========================================================================
-   Comprehensive Light Theme Overrides for Sidebar & Typography
+   Comprehensive Light Theme Overrides for All Pages & Components
    ========================================================================== */
 
+/* 1. Global Shell & Typography in Light Theme */
+.home-welcome-title {
+  font-size: 1.45rem;
+  font-weight: 600;
+  margin: 0 0 6px;
+  color: #ffffff;
+}
+
+html.theme-light .home-welcome-title,
+html.light .home-welcome-title {
+  color: #0f172a !important; /* Crystal clear dark title */
+}
+
+html.theme-light .crumb,
+html.light .crumb {
+  color: #64748b !important;
+}
+
+html.theme-light .topbar h1,
+html.light .topbar h1 {
+  color: #0f172a !important;
+}
+
+html.theme-light .topbar,
+html.light .topbar {
+  border-bottom-color: #e2e8f0 !important;
+}
+
+/* 2. Sidebar in Light Theme */
 html.theme-light .sidebar,
 html.light .sidebar {
   background: #ffffff !important;
@@ -5752,13 +5781,18 @@ html.light .nav-accordion-header .header-chevron {
 /* Light Theme: Recent Chats List Items (High Contrast & Clear) */
 html.theme-light .recent-chat-item,
 html.light .recent-chat-item {
-  color: #1e293b !important; /* Crisp Dark Slate Text */
+  color: #0f172a !important; /* Bold, high-contrast dark text */
   font-weight: 400 !important;
+}
+
+html.theme-light .recent-chat-item .chat-title,
+html.light .recent-chat-item .chat-title {
+  color: #0f172a !important;
 }
 
 html.theme-light .recent-chat-item .chat-icon,
 html.light .recent-chat-item .chat-icon {
-  color: #64748b !important;
+  color: #0284c7 !important;
   opacity: 0.9 !important;
 }
 
@@ -5768,10 +5802,9 @@ html.light .recent-chat-item:hover {
   color: #0284c7 !important;
 }
 
-html.theme-light .recent-chat-item:hover .chat-icon,
-html.light .recent-chat-item:hover .chat-icon {
+html.theme-light .recent-chat-item:hover .chat-title,
+html.light .recent-chat-item:hover .chat-title {
   color: #0284c7 !important;
-  opacity: 1 !important;
 }
 
 html.theme-light .recent-chat-item.active,
@@ -5782,10 +5815,9 @@ html.light .recent-chat-item.active {
   font-weight: 500 !important;
 }
 
-html.theme-light .recent-chat-item.active .chat-icon,
-html.light .recent-chat-item.active .chat-icon {
-  color: #0284c7 !important;
-  opacity: 1 !important;
+html.theme-light .recent-chat-item.active .chat-title,
+html.light .recent-chat-item.active .chat-title {
+  color: #0369a1 !important;
 }
 
 html.theme-light .recent-chats-empty,
@@ -5871,6 +5903,232 @@ html.light .sidebar-foot .text-button {
   color: #0284c7 !important;
   font-weight: 500 !important;
 }
+
+/* 3. Home Page in Light Theme */
+html.theme-light .role-badge-pill,
+html.light .role-badge-pill {
+  background: #f1f5f9 !important;
+  color: #334155 !important;
+  border: 1px solid #cbd5e1 !important;
+}
+
+html.theme-light .dashboard-view-switcher,
+html.light .dashboard-view-switcher {
+  background: #f1f5f9 !important;
+  border: 1px solid #e2e8f0 !important;
+}
+
+html.theme-light .dashboard-view-switcher button,
+html.light .dashboard-view-switcher button {
+  color: #64748b !important;
+}
+
+html.theme-light .dashboard-view-switcher button.active,
+html.light .dashboard-view-switcher button.active {
+  background: #ffffff !important;
+  color: #0284c7 !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08) !important;
+}
+
+html.theme-light .quick-card,
+html.light .quick-card {
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04) !important;
+}
+
+html.theme-light .quick-card:hover,
+html.light .quick-card:hover {
+  background: #f8fafc !important;
+  border-color: #0284c7 !important;
+  box-shadow: 0 6px 20px rgba(2, 132, 199, 0.1) !important;
+}
+
+html.theme-light .quick-card h2,
+html.light .quick-card h2 {
+  color: #0f172a !important;
+}
+
+html.theme-light .quick-card p,
+html.light .quick-card p {
+  color: #475569 !important;
+}
+
+html.theme-light .stat-card,
+html.light .stat-card {
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04) !important;
+}
+
+html.theme-light .stat-card span,
+html.light .stat-card span {
+  color: #475569 !important;
+}
+
+html.theme-light .stat-card strong,
+html.light .stat-card strong {
+  color: #0f172a !important;
+}
+
+html.theme-light .stat-card small,
+html.light .stat-card small {
+  color: #64748b !important;
+}
+
+html.theme-light .panel,
+html.light .panel {
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04) !important;
+}
+
+html.theme-light .panel-head,
+html.light .panel-head {
+  border-bottom: 1px solid #f1f5f9 !important;
+}
+
+html.theme-light .panel-head .panel-label,
+html.light .panel-head .panel-label {
+  color: #0f172a !important;
+  font-weight: 500 !important;
+}
+
+html.theme-light .plain-list .list-row,
+html.light .plain-list .list-row {
+  border-bottom: 1px solid #f1f5f9 !important;
+}
+
+html.theme-light .plain-list .list-row:hover,
+html.light .plain-list .list-row:hover {
+  background: #f8fafc !important;
+}
+
+html.theme-light .plain-list .list-row span,
+html.light .plain-list .list-row span {
+  color: #0f172a !important;
+}
+
+html.theme-light .plain-list .list-row small,
+html.light .plain-list .list-row small {
+  color: #64748b !important;
+}
+
+html.theme-light .conversation-meta-badge,
+html.light .conversation-meta-badge {
+  background: #e0f2fe !important;
+  color: #0284c7 !important;
+  border: 1px solid #bae6fd !important;
+}
+
+/* 4. Roadmap Page (แผนงาน) in Light Theme */
+html.theme-light .roadmap-summary,
+html.light .roadmap-summary {
+  color: #0f172a !important;
+}
+
+html.theme-light .roadmap-summary p,
+html.light .roadmap-summary p {
+  color: #334155 !important;
+}
+
+html.theme-light .summary-stats span,
+html.light .summary-stats span {
+  color: #475569 !important;
+}
+
+html.theme-light .summary-stats b,
+html.light .summary-stats b {
+  color: #0f172a !important;
+  font-size: 1.05rem !important;
+}
+
+html.theme-light .source-note,
+html.light .source-note {
+  color: #64748b !important;
+}
+
+html.theme-light .phase,
+html.light .phase {
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04) !important;
+}
+
+html.theme-light .phase.expanded,
+html.light .phase.expanded {
+  border-color: #0284c7 !important;
+  box-shadow: 0 4px 14px rgba(2, 132, 199, 0.1) !important;
+}
+
+html.theme-light .phase-title b,
+html.light .phase-title b {
+  color: #0284c7 !important;
+}
+
+html.theme-light .phase-title strong,
+html.light .phase-title strong {
+  color: #0f172a !important;
+  font-size: 0.96rem !important;
+}
+
+html.theme-light .phase-title small,
+html.light .phase-title small {
+  color: #475569 !important;
+  font-size: 0.78rem !important;
+}
+
+html.theme-light .phase-progress b,
+html.light .phase-progress b {
+  color: #0f172a !important;
+}
+
+html.theme-light .phase-progress small,
+html.light .phase-progress small {
+  color: #64748b !important;
+}
+
+html.theme-light .phase-details,
+html.light .phase-details {
+  border-top: 1px solid #f1f5f9 !important;
+  background: #f8fafc !important;
+}
+
+html.theme-light .phase-details ol,
+html.light .phase-details ol {
+  color: #1e293b !important;
+}
+
+html.theme-light .phase-details li,
+html.light .phase-details li {
+  color: #1e293b !important;
+  font-weight: 400 !important;
+}
+
+html.theme-light .phase-details li span,
+html.light .phase-details li span {
+  border-color: #cbd5e1 !important;
+  color: #64748b !important;
+}
+
+html.theme-light .phase-details li.completed,
+html.light .phase-details li.completed {
+  color: #065f46 !important;
+  font-weight: 500 !important;
+}
+
+html.theme-light .phase-details li.completed span,
+html.light .phase-details li.completed span {
+  background: #10b981 !important;
+  border-color: #10b981 !important;
+  color: #ffffff !important;
+}
+
+html.theme-light .progress,
+html.light .progress {
+  background: #e2e8f0 !important;
+}
+
 
 
 
