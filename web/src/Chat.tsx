@@ -108,6 +108,7 @@ export function ChatWorkspace({
   const detail = useConversation(conversationId);
   const abort = useRef<AbortController | null>(null);
   const transcript = useRef<HTMLDivElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
   const heroTextareaRef = useRef<HTMLTextAreaElement>(null);
   const bottomTextareaRef = useRef<HTMLTextAreaElement>(null);
   const recognitionRef = useRef<any>(null);
@@ -176,10 +177,10 @@ export function ChatWorkspace({
     );
   }, [conversationId, detail.data]);
 
-  // Auto-scroll on new turns
+  // Auto-scroll to the bottom on new turns, streaming chunks, or status updates
   useEffect(() => {
-    if (transcript.current) {
-      transcript.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
     }
   }, [turns, streaming]);
 
@@ -1082,6 +1083,9 @@ export function ChatWorkspace({
                 </div>
               </div>
             ))}
+
+            {/* Invisible anchor element with generous clearance for sticky bottom bar */}
+            <div ref={messagesEndRef} className="transcript-scroll-anchor" />
           </div>
         )}
       </div>
