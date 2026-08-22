@@ -180,20 +180,19 @@ export function ChatWorkspace({
     );
   }, [conversationId, detail.data]);
 
-  // Robust Auto-scroll to bottom on new turns, streaming chunks, or status updates
+  // Auto-scroll to bottom ONLY when the chat workspace is currently visible and has message turns
   const scrollToBottom = (behavior: ScrollBehavior = 'smooth') => {
+    if (!isChatVisible || turns.length === 0) return;
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior, block: 'end' });
     }
-    window.scrollTo({
-      top: document.documentElement.scrollHeight,
-      behavior,
-    });
   };
 
   useEffect(() => {
-    scrollToBottom('smooth');
-  }, [turns, streaming]);
+    if (isChatVisible && turns.length > 0) {
+      scrollToBottom('smooth');
+    }
+  }, [turns, streaming, isChatVisible]);
 
   useEffect(() => {
     return () => {
