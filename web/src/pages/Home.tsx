@@ -372,7 +372,7 @@ export function Home({ onNavigate, onConnect }: { onNavigate: Navigate; onConnec
     <>
       <section className="home-header-row">
         <div>
-          <h1 style={{ fontSize: '1.45rem', fontWeight: 800, margin: '0 0 6px', color: '#ffffff' }}>
+          <h1 style={{ fontSize: '1.45rem', fontWeight: 600, margin: '0 0 6px', color: '#ffffff' }}>
             {loc.welcome.replace('{name}', identity.data?.name ?? 'Admin')}
           </h1>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
@@ -520,12 +520,12 @@ export function Home({ onNavigate, onConnect }: { onNavigate: Navigate; onConnec
                     onClick={() => onNavigate('chat', { conversationId: summary.id })}
                   >
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                      <b style={{ color: '#f8fafc', fontSize: '0.92rem' }}>
+                      <span style={{ color: '#f8fafc', fontSize: '0.92rem', fontWeight: 400 }}>
                         {summary.title || t('chat.untitled')}
-                      </b>
+                      </span>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                         <span className="conversation-meta-badge">{mode.tag}</span>
-                        <small style={{ color: '#94a3b8' }}>{formatDate(summary.updatedAt)}</small>
+                        <small style={{ color: '#94a3b8', fontWeight: 400 }}>{formatDate(summary.updatedAt)}</small>
                       </div>
                     </div>
                   </button>
@@ -549,8 +549,8 @@ export function Home({ onNavigate, onConnect }: { onNavigate: Navigate; onConnec
             {(favorites.data ?? []).slice(0, 5).map((mark) => (
               <li key={`${mark.kind}:${mark.targetId}`}>
                 <span className="list-row static">
-                  <b style={{ color: '#f8fafc' }}>{mark.label}</b>
-                  <small>
+                  <span style={{ color: '#f8fafc', fontWeight: 400 }}>{mark.label}</span>
+                  <small style={{ fontWeight: 400 }}>
                     <Tag tone="info">{t(`favorite.kind.${mark.kind}`)}</Tag> {mark.detail ?? ''}
                   </small>
                 </span>
