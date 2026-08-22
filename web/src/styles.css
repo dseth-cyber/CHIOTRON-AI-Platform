@@ -6129,6 +6129,237 @@ html.light .progress {
   background: #e2e8f0 !important;
 }
 
+/* 5. Prompt Library & Enterprise Blueprint in Light Theme */
+html.theme-light .blueprint-title,
+html.light .blueprint-title {
+  background: linear-gradient(135deg, #0f172a 0%, #0284c7 100%) !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  font-weight: 600 !important;
+}
+
+html.theme-light .blueprint-subtitle,
+html.light .blueprint-subtitle {
+  color: #475569 !important;
+  font-weight: 400 !important;
+}
+
+html.theme-light .prompt-toolbar,
+html.light .prompt-toolbar {
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04) !important;
+}
+
+html.theme-light .prompt-search-input,
+html.light .prompt-search-input {
+  background: #f8fafc !important;
+  border: 1px solid #cbd5e1 !important;
+  color: #0f172a !important;
+}
+
+html.theme-light .prompt-search-input:focus,
+html.light .prompt-search-input:focus {
+  background: #ffffff !important;
+  border-color: #0284c7 !important;
+  box-shadow: 0 0 10px rgba(2, 132, 199, 0.2) !important;
+}
+
+html.theme-light .prompt-search-input::placeholder,
+html.light .prompt-search-input::placeholder {
+  color: #64748b !important;
+}
+
+html.theme-light .prompt-search-wrap svg,
+html.light .prompt-search-wrap svg {
+  color: #64748b !important;
+}
+
+html.theme-light .cat-pill-btn,
+html.light .cat-pill-btn {
+  background: #f1f5f9 !important;
+  border: 1px solid #e2e8f0 !important;
+  color: #475569 !important;
+  font-weight: 400 !important;
+}
+
+html.theme-light .cat-pill-btn:hover,
+html.light .cat-pill-btn:hover {
+  background: #e2e8f0 !important;
+  color: #0f172a !important;
+}
+
+html.theme-light .cat-pill-btn.active,
+html.light .cat-pill-btn.active {
+  background: #e0f2fe !important;
+  border-color: #0284c7 !important;
+  color: #0284c7 !important;
+  font-weight: 500 !important;
+  box-shadow: 0 0 10px rgba(2, 132, 199, 0.15) !important;
+}
+
+html.theme-light .prompt-card,
+html.light .prompt-card {
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04) !important;
+}
+
+html.theme-light .prompt-card:hover,
+html.light .prompt-card:hover {
+  background: #f8fafc !important;
+  border-color: #0284c7 !important;
+  box-shadow: 0 8px 24px rgba(2, 132, 199, 0.12) !important;
+}
+
+html.theme-light .prompt-cat-badge,
+html.light .prompt-cat-badge {
+  background: #e0f2fe !important;
+  color: #0284c7 !important;
+  border: 1px solid #bae6fd !important;
+}
+
+html.theme-light .prompt-version-tag,
+html.light .prompt-version-tag {
+  background: #f1f5f9 !important;
+  color: #64748b !important;
+}
+
+html.theme-light .prompt-card-title,
+html.light .prompt-card-title {
+  color: #0f172a !important;
+  font-weight: 500 !important;
+}
+
+html.theme-light .prompt-card-desc,
+html.light .prompt-card-desc {
+  color: #475569 !important;
+  font-weight: 400 !important;
+}
+
+html.theme-light .prompt-tag-pill,
+html.light .prompt-tag-pill {
+  background: #f3e8ff !important;
+  color: #7e22ce !important;
+}
+
+html.theme-light .prompt-card-footer,
+html.light .prompt-card-footer {
+  border-top-color: #f1f5f9 !important;
+}
+
+html.theme-light .prompt-meta-tokens,
+html.light .prompt-meta-tokens {
+  color: #64748b !important;
+}
+
+html.theme-light .prompt-copy-btn,
+html.light .prompt-copy-btn {
+  background: #e0f2fe !important;
+  border-color: #bae6fd !important;
+  color: #0284c7 !important;
+}
+
+html.theme-light .prompt-copy-btn:hover,
+html.light .prompt-copy-btn:hover {
+  background: #0284c7 !important;
+  color: #ffffff !important;
+}
+
+html.theme-light .prompt-copy-btn.copied,
+html.light .prompt-copy-btn.copied {
+  background: #10b981 !important;
+  border-color: #10b981 !important;
+  color: #ffffff !important;
+}
+
+html.theme-light .prompt-view-btn,
+html.light .prompt-view-btn {
+  color: #64748b !important;
+}
+
+html.theme-light .prompt-view-btn:hover,
+html.light .prompt-view-btn:hover {
+  color: #0284c7 !important;
+}
+
+/* Prompt Modal in Light Theme */
+html.theme-light .prompt-modal-container,
+html.light .prompt-modal-container {
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15) !important;
+}
+
+html.theme-light .prompt-modal-title,
+html.light .prompt-modal-title {
+  color: #0f172a !important;
+}
+
+html.theme-light .prompt-modal-desc,
+html.light .prompt-modal-desc {
+  color: #475569 !important;
+}
+
+html.theme-light .prompt-code-preview,
+html.light .prompt-code-preview {
+  background: #f8fafc !important;
+  border: 1px solid #e2e8f0 !important;
+  color: #0f172a !important;
+}
+
+html.theme-light .prompt-modal-footer,
+html.light .prompt-modal-footer {
+  border-top-color: #f1f5f9 !important;
+}
+
+/* Enterprise Blueprint in Light Theme */
+html.theme-light .blueprint-tab-btn,
+html.light .blueprint-tab-btn {
+  background: #f1f5f9 !important;
+  border: 1px solid #e2e8f0 !important;
+  color: #475569 !important;
+  font-weight: 400 !important;
+}
+
+html.theme-light .blueprint-tab-btn:hover,
+html.light .blueprint-tab-btn:hover {
+  background: #e2e8f0 !important;
+  color: #0f172a !important;
+}
+
+html.theme-light .blueprint-tab-btn.active,
+html.light .blueprint-tab-btn.active {
+  background: #e0f2fe !important;
+  border-color: #0284c7 !important;
+  color: #0284c7 !important;
+  font-weight: 500 !important;
+}
+
+html.theme-light .blueprint-hero-card,
+html.light .blueprint-hero-card,
+html.theme-light .blueprint-card,
+html.light .blueprint-card {
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04) !important;
+}
+
+html.theme-light .blueprint-hero-card h2,
+html.light .blueprint-hero-card h2,
+html.theme-light .blueprint-card h2,
+html.light .blueprint-card h2 {
+  color: #0f172a !important;
+}
+
+html.theme-light .blueprint-hero-card p,
+html.light .blueprint-hero-card p,
+html.theme-light .blueprint-card p,
+html.light .blueprint-card p {
+  color: #475569 !important;
+}
+
+
 
 
 
