@@ -512,8 +512,53 @@ docker compose up -d --build portal   # after editing web/
 docker compose up -d --build api      # after editing control-plane/
 ```
 
+## 🚀 ระบบ CI/CD อัตโนมัติ (Automated CI/CD Pipelines)
+
+แพลตฟอร์มรองรับกระบวนการ **Continuous Integration & Continuous Deployment (CI/CD)** เต็มรูปแบบผ่าน **GitHub Actions**:
+
+```text
+[ 💻 Developer Push / PR ] 
+           │
+           ▼
+ ┌─────────────────────────────────────────────────────────────┐
+ │ 🧪 1. GitHub Actions CI (.github/workflows/ci.yml)          │
+ │  - Go: gofmt, go vet, go test -race (26 packages), go build │
+ │  - React/TS: npm run typecheck, npm run build               │
+ │  - Docker: Compose config validation, image build test      │
+ └─────────────────────────────────────────────────────────────┘
+           │
+           ▼ (Push to 'main' or Release Tag 'v*')
+ ┌─────────────────────────────────────────────────────────────┐
+ │ 📦 2. GitHub Container Registry (.github/workflows/cd.yml)  │
+ │  - Builds & pushes `ghcr.io/.../control-plane:latest`       │
+ └─────────────────────────────────────────────────────────────┘
+           │
+           ▼ (Auto-Triggered if PROD_HOST secret is configured)
+ ┌─────────────────────────────────────────────────────────────┐
+ │ 🚀 3. Automated SSH Production Deployment                   │
+ │  - SSH to Server -> Git pull -> Rebuild API -> Health Check │
+ └─────────────────────────────────────────────────────────────┘
+```
+
+### ⚙️ การตั้งค่า GitHub Repository Secrets สำหรับ Auto-Deploy:
+เมื่อพร้อมขึ้น Production สามารถเพิ่ม Secrets ใน **GitHub Repo -> Settings -> Secrets and variables -> Actions**:
+
+| Secret Name | คำอธิบาย | ตัวอย่าง |
+|---|---|---|
+| `PROD_HOST` | IP Address หรือ Domain Name ของเครื่อง Production | `203.0.113.10` หรือ `ai.example.com` |
+| `PROD_USER` | ชื่อผู้ใช้งาน SSH | `ubuntu` หรือ `deployer` |
+| `PROD_SSH_KEY` | Private SSH Key สำหรับล็อกอินเข้า Server | `-----BEGIN OPENSSH PRIVATE KEY----- ...` |
+| `PROD_PORT` | พอร์ต SSH (ทางเลือก, ค่าเริ่มต้น 22) | `22` |
+| `PROD_WORK_DIR` | โฟลเดอร์ที่ติดตั้งระบบบน Server (ทางเลือก) | `/opt/chiotron-ai` |
+
+> [!NOTE]
+> หากยังไม่ได้ตั้งค่า `PROD_HOST` บน GitHub ระบบจะรันเฉพาะขั้นตอน **CI (Test/Build)** และ **GHCR Image Publishing** โดยอัตโนมัติ โดยไม่ส่งผลกระทบใดๆ ต่อการพัฒนาในปัจจุบันครับ
+
+---
+
 ## Architecture boundary
 
 `portal -> AI Gateway / Orchestrator -> authorized tools and compute providers`
 
 ERP and users must never address the Compute Plane directly. Production placement puts `api`, portal, PostgreSQL, and Redis in VM4, while Ollama/vLLM runs on GPU-passthrough VM5 over a private network.
+
