@@ -15,7 +15,7 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
-    networks: [control]
+    networks: [net]
 
   redis:
     image: redis:7-alpine
@@ -27,7 +27,7 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
-    networks: [control]
+    networks: [net]
 
   api:
     build:
@@ -108,7 +108,7 @@ services:
     ports:
       - "8080:8080"
       - "5173:8080"
-    networks: [control, compute]
+    networks: [net]
 
   # Development-only observability. Production reuses the existing Prometheus,
   # Grafana, Loki and Tempo (ARCHITECTURE-v1 section 9) and loads the same
@@ -127,7 +127,7 @@ services:
       - prometheus-data:/prometheus
     ports:
       - "9090:9090"
-    networks: [control]
+    networks: [net]
 
   grafana:
     image: grafana/grafana:11.5.1
@@ -145,7 +145,7 @@ services:
     depends_on: [prometheus]
     ports:
       - "3000:3000"
-    networks: [control]
+    networks: [net]
 
   # GPU metrics come from the compute plane, because only a process with the
   # NVIDIA runtime can see the card.
@@ -153,7 +153,6 @@ services:
     build:
       context: ./control-plane
       dockerfile: Dockerfile.gpu-exporter
-    profiles: ["compute"]
     environment:
       GPU_EXPORTER_ADDR: ${GPU_EXPORTER_ADDR:-:9401}
       GPU_EXPORTER_INTERVAL: ${GPU_EXPORTER_INTERVAL:-10s}
@@ -169,12 +168,11 @@ services:
               capabilities: [gpu]
     # On `control` as well, so Prometheus can scrape it without crossing into
     # the compute network.
-    networks: [compute, control]
+    networks: [net]
 
   # VM5 substitute for local development. In production it belongs on an isolated GPU VM.
   ollama:
     image: ollama/ollama:latest
-    profiles: ["compute"]
     volumes:
       - ollama-data:/root/.ollama
     deploy:
@@ -186,17 +184,10 @@ services:
               capabilities: [gpu]
     # `control` is development-only egress for initial model downloads.
     # No host port is published; production VM5 should use a controlled egress path.
-    networks: [compute, control]
+    networks: [net]
 
 networks:
-  control:
-    # Docker Desktop on this development host has exhausted its automatic
-    # address pools, so reuse this pre-existing local development network.
-    external: true
-    name: chiotron_default
-  compute:
-    external: true
-    name: chiotron-ai_compute
+  net:
 
 volumes:
   postgres-data:
